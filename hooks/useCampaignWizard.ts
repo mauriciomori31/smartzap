@@ -415,7 +415,7 @@ export const useCampaignWizardController = () => {
     // Em modo teste, pode existir um pequeno delay até termos o contactId resolvido.
     // Evita UX confusa de "Selecione pelo menos um contato".
     if (recipientSource === 'test' && testContact && !resolvedTestContactId) {
-      if (!options?.silent) toast.message('Preparando contato de teste…');
+      if (!options?.silent) toast.info('Preparando contato de teste…');
       return;
     }
 
@@ -495,7 +495,7 @@ export const useCampaignWizardController = () => {
   // INTELLIGENT VALIDATION - Prevents users from sending campaigns that exceed limits
   const handleSend = async (scheduleTime?: string) => {
     if (recipientSource === 'test' && testContact && !resolvedTestContactId) {
-      toast.message('Preparando contato de teste…');
+      toast.info('Preparando contato de teste…');
       return;
     }
 
