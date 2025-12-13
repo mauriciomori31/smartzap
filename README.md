@@ -34,7 +34,179 @@ Este repositório também é usado como base educacional. A pasta `tmp/` pode co
 - **IA**: Vercel AI SDK v6 com suporte a Gemini/OpenAI/Anthropic.
 - **WhatsApp**: Meta WhatsApp Cloud API (Graph API v24+).
 
-## Arquitetura (como navegar no código)
+## Arquitetura (primeiro: como tudo se conecta)
+
+Esta seção existe para responder rapidamente:
+
+- **quem chama quem** (UI → API → filas → Meta → webhook → DB → UI)
+- **onde cada dado mora** (o que é fonte da verdade vs cache)
+- **onde ficam as integrações** (Supabase, Upstash/QStash, Meta)
+
+> O GitHub renderiza Mermaid em Markdown usando blocos ` ```mermaid `.
+
+### Mapa de serviços (UI → Next.js → Upstash → Meta → Supabase)
+
+```mermaid
+flowchart TB
+   %% ========== Client ==========
+   subgraph B["Browser (Dashboard)"]
+      UI["UI (Pages/Components)"]
+      Hooks["Hooks (React Query + estado)"]
+      Services["Services (fetch para /api)"]
+      UI --> Hooks --> Services
+   end
+
+   %% ========== App ==========
+   subgraph N["Next.js (App Router / Node runtime)"]
+      API["API Routes\napp/api/**/route.ts"]
+      Lib["Lib\n(regras, validação, integrações)"]
+      API --> Lib
+   end
+
+   Services --> API
+
+   %% ========== Data ==========
+   subgraph S["Supabase (PostgreSQL)"]
+      Settings["settings\n(credenciais/config)"]
+      Campaigns["campaigns\n(status/contadores)"]
+      CC["campaign_contacts\n(status por contato + message_id)"]
+      Contacts["contacts"]
+      Templates["templates\n(cache local)"]
+      Alerts["account_alerts"]
+   end
+
+   Lib --> Settings
+   Lib --> Campaigns
+   Lib --> CC
+   Lib --> Contacts
+   Lib --> Templates
+   Lib --> Alerts
+
+   %% UI updates
+   S -->|"Realtime/queries"| Hooks
+
+   %% ========== Async ==========
+   subgraph U["Upstash"]
+      QStash["QStash / Workflow\n(fila + steps duráveis)"]
+      Redis["Redis (opcional)\ncache/estado/limites"]
+   end
+
+   Lib --> QStash
+   QStash --> API
+
+   %% ========== External ==========
+   subgraph M["Meta (WhatsApp Cloud API / Graph API)"]
+      WA["/messages (envio)"]
+      WH["Webhook callbacks\n(delivered/read/failed)"]
+   end
+
+   Lib --> WA
+   WH --> API
+
+   Settings -.->|"credenciais: DB (primário) / ENV (fallback)"| Lib
+```
+
+### Fluxo de campanha (do clique ao webhook)
+
+```mermaid
+sequenceDiagram
+   autonumber
+   participant U as Usuário
+   participant UI as Dashboard (Browser)
+   participant API as Next.js API Routes
+   participant DB as Supabase (Postgres)
+   participant Q as Upstash QStash/Workflow
+   participant WA as Meta WhatsApp Cloud API
+   participant WH as Webhook (/api/webhook)
+
+   U->>UI: Disparar campanha
+   UI->>API: POST /api/campaign/dispatch
+   API->>DB: Buscar campanha/contatos/template local
+   API->>DB: Buscar credenciais (settings)
+   API->>Q: Iniciar workflow (payload inclui phoneNumberId + accessToken)
+   API-->>UI: 202/200 (agendado/iniciando)
+
+   loop Steps do workflow (batches)
+      Q->>API: POST /api/campaign/workflow (step)
+      API->>DB: Claim idempotente (campaign_contacts)
+      API->>WA: POST /v24.0/{phoneNumberId}/messages
+      WA-->>API: message_id ou erro
+      API->>DB: Salva message_id + status sent/failed
+   end
+
+   note over WA,WH: A Meta envia eventos assíncronos depois
+
+   WA->>WH: POST webhook (delivered/read/failed)
+   WH->>DB: Atualiza status + incrementa contadores (RPC)
+   DB-->>UI: UI enxerga via queries/realtime
+```
+
+### Modelo mental do banco (o que persiste)
+
+O relacionamento que amarra tudo em campanhas é:
+
+`campaigns` → `campaign_contacts` (por contato, com `message_id`) → atualizado por workflow e pelo webhook.
+
+```mermaid
+erDiagram
+   SETTINGS ||--o{ CAMPAIGNS : "configura/cria"
+   CONTACTS ||--o{ CAMPAIGN_CONTACTS : "participa"
+   CAMPAIGNS ||--o{ CAMPAIGN_CONTACTS : "possui"
+   TEMPLATES ||--o{ CAMPAIGNS : "baseado_em"
+   CAMPAIGNS ||--o{ ACCOUNT_ALERTS : "pode_gerar"
+
+   SETTINGS {
+      string id
+      string phoneNumberId
+      string businessAccountId
+      string accessToken
+      string verifyToken
+   }
+
+   CONTACTS {
+      string id
+      string phone
+      string name
+      string status
+   }
+
+   TEMPLATES {
+      string name
+      string language
+      string spec_hash
+   }
+
+   CAMPAIGNS {
+      string id
+      string templateName
+      string status
+      int recipients
+      int sent
+      int delivered
+      int read
+      int failed
+      int skipped
+   }
+
+   CAMPAIGN_CONTACTS {
+      string id
+      string campaign_id
+      string contact_id
+      string phone
+      string status
+      string message_id
+   }
+
+   ACCOUNT_ALERTS {
+      string id
+      string type
+      int code
+      string message
+      bool dismissed
+   }
+```
+
+### Como navegar no código (Page → Hook → Service → API)
 
 ### Padrão de frontend (Page → Hook → Service → API)
 
