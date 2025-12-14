@@ -2211,7 +2211,7 @@ export const CampaignWizardView: React.FC<CampaignWizardViewProps> = ({
             {/* Phone Mockup - Universal Component */}
             <div className="flex-1 min-h-0 flex items-center justify-center">
               <WhatsAppPhonePreview
-                className="w-[320px] h-[620px]"
+                className="w-[320px] h-[620px] max-h-full"
                 components={previewTemplate?.components}
                 fallbackContent={previewTemplate?.content}
                 variables={(() => {
@@ -2299,7 +2299,6 @@ export const CampaignWizardView: React.FC<CampaignWizardViewProps> = ({
                 showEmptyState={!selectedTemplateId}
                 emptyStateMessage="Selecione um template ao lado para visualizar"
                 size="adaptive"
-                className="max-h-full"
               />
             </div>
           </div>

@@ -35,7 +35,10 @@ function parseListResponse(raw: unknown): ManualDraftTemplate[] {
 
 export const manualDraftsService = {
   async get(id: string): Promise<ManualDraftTemplate> {
-    const res = await fetch(`/api/templates/drafts/${encodeURIComponent(id)}`, { method: 'GET' })
+    const res = await fetch(`/api/templates/drafts/${encodeURIComponent(id)}`, {
+      method: 'GET',
+      credentials: 'include',
+    })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
       throw new Error(data?.error || 'Falha ao buscar rascunho')
@@ -47,7 +50,7 @@ export const manualDraftsService = {
   },
 
   async list(): Promise<ManualDraftTemplate[]> {
-    const res = await fetch('/api/templates/drafts', { method: 'GET' })
+    const res = await fetch('/api/templates/drafts', { method: 'GET', credentials: 'include' })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
       throw new Error(data?.error || 'Falha ao buscar rascunhos')
@@ -59,6 +62,7 @@ export const manualDraftsService = {
   async create(input: { name: string; language?: string; category?: string; parameterFormat?: 'positional' | 'named' }): Promise<ManualDraftTemplate> {
     const res = await fetch('/api/templates/drafts', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     })
@@ -73,7 +77,7 @@ export const manualDraftsService = {
   },
 
   async remove(id: string): Promise<void> {
-    const res = await fetch(`/api/templates/drafts/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    const res = await fetch(`/api/templates/drafts/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
       throw new Error(data?.error || 'Falha ao excluir rascunho')
@@ -86,6 +90,7 @@ export const manualDraftsService = {
   ): Promise<ManualDraftTemplate> {
     const res = await fetch(`/api/templates/drafts/${encodeURIComponent(id)}`, {
       method: 'PATCH',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     })
@@ -100,7 +105,7 @@ export const manualDraftsService = {
   },
 
   async submit(id: string): Promise<{ success: boolean; status?: string; id?: string; name?: string }> {
-    const res = await fetch(`/api/templates/drafts/${encodeURIComponent(id)}/submit`, { method: 'POST' })
+    const res = await fetch(`/api/templates/drafts/${encodeURIComponent(id)}/submit`, { method: 'POST', credentials: 'include' })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
       throw new Error(data?.error || 'Falha ao enviar template para a Meta')

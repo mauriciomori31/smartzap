@@ -281,7 +281,7 @@ export const { POST } = serve<CampaignWorkflowInput>(
               concurrency,
               batchSize: BATCH_SIZE,
               adaptiveEnabled,
-              floorDelayMs: Number(adaptiveConfig?.sendFloorDelayMs ?? process.env.WHATSAPP_SEND_FLOOR_DELAY_MS || '0'),
+              floorDelayMs: Number(adaptiveConfig?.sendFloorDelayMs ?? process.env.WHATSAPP_SEND_FLOOR_DELAY_MS ?? '0'),
             },
           })
 
@@ -328,7 +328,7 @@ export const { POST } = serve<CampaignWorkflowInput>(
               })
               skippedCount++
               console.log(`⏭️ Skipped ${contact.phone}: ${precheck.reason}`)
-              continue
+              return
             }
 
             // Claim idempotente: só 1 executor envia por contato
@@ -375,7 +375,7 @@ export const { POST } = serve<CampaignWorkflowInput>(
             }
             if (!claimed) {
               console.log(`↩️ Idempotência: ${contact.phone} não estava pending (ou já claimado), pulando envio.`)
-              continue
+              return
             }
 
             const whatsappPayload: any = buildMetaTemplatePayload({
@@ -533,7 +533,7 @@ export const { POST } = serve<CampaignWorkflowInput>(
             // Delay mínimo opcional (deixa desligado por padrão).
             // Observação: com limiter ativo, esse delay não é necessário para throughput,
             // mas pode ser útil para aliviar CPU/logs em bursts.
-            const floorDelayMs = Number(adaptiveConfig?.sendFloorDelayMs ?? process.env.WHATSAPP_SEND_FLOOR_DELAY_MS || '0')
+            const floorDelayMs = Number(adaptiveConfig?.sendFloorDelayMs ?? process.env.WHATSAPP_SEND_FLOOR_DELAY_MS ?? '0')
             if (floorDelayMs > 0) {
               await new Promise(resolve => setTimeout(resolve, floorDelayMs))
             }

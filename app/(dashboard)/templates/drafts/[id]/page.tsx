@@ -18,6 +18,7 @@ export default function ManualDraftEditorPage({ params }: { params: { id: string
   const draftQuery = useQuery({
     queryKey: ['templates', 'drafts', 'manual', id],
     queryFn: async () => manualDraftsService.get(id),
+    enabled: typeof window !== 'undefined' && !!id,
   })
 
   const updateMutation = useMutation({

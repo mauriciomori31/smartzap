@@ -4,7 +4,7 @@ import { useNavigate } from '@/lib/navigation';
 import { toast } from 'sonner';
 import { campaignService, contactService, templateService } from '../services';
 import { settingsService } from '../services/settingsService';
-import { ContactStatus, Template, TestContact } from '../types';
+import { CampaignStatus, ContactStatus, Template, TestContact } from '../types';
 import { useAccountLimits } from './useAccountLimits';
 import { CampaignValidation } from '../lib/meta-limits';
 import { countTemplateVariables } from '../lib/template-validator';
@@ -165,7 +165,7 @@ export const useCampaignWizardController = () => {
         template: input.templateName,
         recipients: input.recipients,
         sent: 0,
-        status: (input.scheduledAt ? 'SCHEDULED' : 'SENDING') as const,
+        status: (input.scheduledAt ? 'SCHEDULED' : 'SENDING') as CampaignStatus,
         createdAt: new Date().toISOString(),
       };
 

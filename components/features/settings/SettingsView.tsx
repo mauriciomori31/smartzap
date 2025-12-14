@@ -95,6 +95,7 @@ interface SettingsViewProps {
     config?: {
       enabled: boolean;
       sendConcurrency?: number;
+      batchSize?: number;
       startMps: number;
       maxMps: number;
       minMps: number;
@@ -114,6 +115,7 @@ interface SettingsViewProps {
   saveWhatsAppThrottle?: (data: {
     enabled?: boolean;
     sendConcurrency?: number;
+    batchSize?: number;
     startMps?: number;
     maxMps?: number;
     minMps?: number;
