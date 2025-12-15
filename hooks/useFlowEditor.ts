@@ -31,7 +31,20 @@ export function useFlowEditorController(flowId: string) {
   const spec = useMemo(() => {
     const s = (flow as any)?.spec
     if (s && typeof s === 'object') return s
-    return { version: 1, viewport: { x: 0, y: 0, zoom: 1 }, nodes: [], edges: [] }
+    return {
+      version: 1,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      form: {
+        version: 1,
+        screenId: 'FORM',
+        title: (flow as any)?.name || 'Formulário',
+        intro: 'Preencha os dados abaixo:',
+        submitLabel: 'Enviar',
+        fields: [],
+      },
+      nodes: [],
+      edges: [],
+    }
   }, [flow])
 
   return {

@@ -317,9 +317,10 @@ export const CampaignDetailsView: React.FC<CampaignDetailsViewProps> = ({
       };
     }
 
+    // Fonte avançada, mas sem telemetria útil (ex.: execução curta demais ou batch_metrics não foi registrado)
     return {
-      value: '—',
-      subvalue: 'Ainda não há sinal suficiente (ou a execução não registrou métricas avançadas).',
+      value: 'Sem telemetria',
+      subvalue: 'Esta execução não registrou sinal de 130429 nem latência média da Meta. Rode uma campanha maior ou verifique se os batches estão gravando métricas.',
       color: '#3b82f6',
     };
   }, [metrics?.source, perf?.meta_avg_ms, perf?.saw_throughput_429]);
@@ -544,7 +545,7 @@ export const CampaignDetailsView: React.FC<CampaignDetailsViewProps> = ({
             <div>
               <h3 className="text-white font-bold">Velocidade do disparo</h3>
               <p className="text-xs text-gray-500">
-                Somente envios (sent-only): janela entre <span className="font-mono">first_dispatch_at</span> e <span className="font-mono">last_sent_at</span>.
+                Conta apenas o período do primeiro envio até o último envio (sent-only).
               </p>
             </div>
 
@@ -595,7 +596,7 @@ export const CampaignDetailsView: React.FC<CampaignDetailsViewProps> = ({
             <DetailCard
               title="Tempo total"
               value={formatDurationMs(Number(perf?.dispatch_duration_ms))}
-              subvalue="Janela sent-only (first_dispatch_at → last_sent_at)"
+              subvalue="Do primeiro envio até o último envio"
               icon={Clock}
               color="#a1a1aa"
             />
@@ -620,7 +621,7 @@ export const CampaignDetailsView: React.FC<CampaignDetailsViewProps> = ({
                   >
                     <div>
                       <div className="text-sm text-gray-300 font-medium">Detalhes técnicos</div>
-                      <div className="text-xs text-gray-500">Config efetiva, Turbo e hash (útil para debug)</div>
+                      <div className="text-xs text-gray-500">Config aplicada e identificadores (para diagnóstico)</div>
                     </div>
                     <ChevronDown
                       size={16}
@@ -653,9 +654,9 @@ export const CampaignDetailsView: React.FC<CampaignDetailsViewProps> = ({
 
                   <div className="mt-2 text-[11px] text-gray-500">
                     {perf?.trace_id ? (
-                      <span>trace_id: <span className="font-mono text-gray-400">{perf.trace_id}</span></span>
+                      <span>ID da execução: <span className="font-mono text-gray-400">{perf.trace_id}</span></span>
                     ) : (
-                      <span>trace_id: <span className="font-mono text-gray-400">—</span></span>
+                      <span>ID da execução: <span className="font-mono text-gray-400">—</span></span>
                     )}
                   </div>
                 </CollapsibleContent>

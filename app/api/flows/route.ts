@@ -94,6 +94,16 @@ export async function POST(request: Request) {
     const initialSpec = {
       version: 1,
       viewport: { x: 0, y: 0, zoom: 1 },
+      // Form spec (para o modo "Formulário" do builder). Mantido dentro de `spec`
+      // para evitar migrations e continuar compatível com o canvas (nodes/edges).
+      form: {
+        version: 1,
+        screenId: 'FORM',
+        title: input.name,
+        intro: 'Preencha os dados abaixo:',
+        submitLabel: 'Enviar',
+        fields: [],
+      },
       nodes: [
         {
           id: 'start',

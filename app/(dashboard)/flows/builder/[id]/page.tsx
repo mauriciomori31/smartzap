@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FlowBuilderCanvas } from '@/components/features/flows/builder/FlowBuilderCanvas'
+import { FlowFormBuilder } from '@/components/features/flows/builder/FlowFormBuilder'
 import { FlowJsonEditorPanel } from '@/components/features/flows/builder/FlowJsonEditorPanel'
 import { useFlowEditorController } from '@/hooks/useFlowEditor'
 
@@ -42,7 +43,7 @@ export default function FlowBuilderEditorPage({
         <div className="space-y-1">
           <PageTitle>Editor de Flow</PageTitle>
           <PageDescription>
-            Edite o Flow JSON (canônico) e, se quiser, use o canvas para organizar a lógica. O Meta Flow ID serve para cruzar envios/submissões.
+            Flow é um formulário. Crie perguntas no modo "Formulário" e o SmartZap gera o Flow JSON automaticamente. O Meta Flow ID serve para cruzar envios/submissões.
           </PageDescription>
         </div>
         <PageActions>
@@ -110,15 +111,30 @@ export default function FlowBuilderEditorPage({
           <div className="glass-panel p-4">
             <div className="text-sm text-gray-300">
               Você <span className="font-semibold">não precisa saber JSON</span> para criar um Flow.
-              Use o modo <span className="font-semibold">Visual</span> (recomendado). O JSON fica em <span className="font-semibold">Avançado</span> só para quem quiser.
+              Use o modo <span className="font-semibold">Formulário</span> (recomendado). O canvas e o JSON ficam como opções avançadas.
             </div>
           </div>
 
-          <Tabs defaultValue="visual" className="mt-2">
+          <Tabs defaultValue="form" className="mt-2">
             <TabsList className="bg-zinc-900/60 border border-white/10">
-              <TabsTrigger value="visual">Visual (recomendado)</TabsTrigger>
+              <TabsTrigger value="form">Formulário (recomendado)</TabsTrigger>
+              <TabsTrigger value="visual">Canvas</TabsTrigger>
               <TabsTrigger value="json">Avançado (JSON)</TabsTrigger>
             </TabsList>
+
+            <TabsContent value="form" className="space-y-4">
+              <FlowFormBuilder
+                flowName={name}
+                currentSpec={controller.spec}
+                isSaving={controller.isSaving}
+                onSave={(patch) => {
+                  controller.save({
+                    ...(patch.spec !== undefined ? { spec: patch.spec } : {}),
+                    ...(patch.flowJson !== undefined ? { flowJson: patch.flowJson } : {}),
+                  })
+                }}
+              />
+            </TabsContent>
 
             <TabsContent value="visual">
               <div className="min-h-130">
