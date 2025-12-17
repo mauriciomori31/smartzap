@@ -49,7 +49,10 @@ export async function GET(_req: Request, { params }: Params) {
     ] = await Promise.all([
       supabase
         .from('campaigns')
-        .select('id, status, recipients, sent, delivered, read, failed, skipped, created_at, first_dispatch_at, last_sent_at')
+        // IMPORTANTE: schemas antigos/usados em prod podem não ter `recipients`.
+        // Para evitar quebrar o endpoint por diferença de coluna, buscamos a linha inteira
+        // e só expomos campos não sensíveis no response.
+        .select('*')
         .eq('id', campaignId)
         .maybeSingle(),
 
@@ -150,15 +153,26 @@ export async function GET(_req: Request, { params }: Params) {
       ? {
           id: campaignRow.id,
           status: campaignRow.status,
-          recipients: campaignRow.recipients ?? null,
+          recipients:
+            (campaignRow as any).recipients ??
+            (campaignRow as any).total_recipients ??
+            (campaignRow as any).totalRecipients ??
+            (campaignRow as any).recipientsCount ??
+            null,
           sent: campaignRow.sent ?? 0,
           delivered: campaignRow.delivered ?? 0,
           read: (campaignRow as any).read ?? 0,
           failed: campaignRow.failed ?? 0,
           skipped: campaignRow.skipped ?? 0,
           createdAt: (campaignRow as any).created_at ?? null,
-          firstDispatchAt: (campaignRow as any).first_dispatch_at ?? null,
-          lastSentAt: (campaignRow as any).last_sent_at ?? null,
+          firstDispatchAt:
+            (campaignRow as any).first_dispatch_at ??
+            (campaignRow as any).firstDispatchAt ??
+            null,
+          lastSentAt:
+            (campaignRow as any).last_sent_at ??
+            (campaignRow as any).lastSentAt ??
+            null,
         }
       : null
 
