@@ -9,6 +9,7 @@ import { humanizePrecheckReason } from '@/lib/precheck-humanizer';
 import { Page, PageHeader, PageTitle } from '@/components/ui/page';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { computeCampaignUiCounters } from '@/lib/campaign-ui-counters';
+import { CampaignTracePanel } from './CampaignTracePanel';
 
 interface DetailCardProps {
   title: string;
@@ -961,6 +962,9 @@ export const CampaignDetailsView: React.FC<CampaignDetailsViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Debug: Run/Trace view */}
+      <CampaignTracePanel campaignId={campaign.id} />
 
       {/* Message Log */}
       <div className="glass-panel rounded-2xl overflow-hidden">

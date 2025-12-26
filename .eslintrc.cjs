@@ -1,5 +1,6 @@
 /** @type {import('eslint').Linter.Config} */
 module.exports = {
   root: true,
-  extends: ['next/core-web-vitals', 'next/typescript'],
+  plugins: ['react-hooks'],
+  extends: ['next/core-web-vitals', 'next/typescript', 'plugin:react-hooks/recommended'],
 }

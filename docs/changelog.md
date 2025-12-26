@@ -11,6 +11,10 @@
   - `traceId` agora é gerado cedo no `dispatch` e gravado em `campaign_contacts` já no precheck (pending/skipped)
   - Webhook emite eventos “positivos” (`delivered`/`read`) na timeline quando o update é aplicado
 
+- **🖥️ Interface de Debug (Trace View) na tela de campanha**
+  - Adicionado painel “Debug • Execuções (Trace)” nos detalhes da campanha para listar `trace_id` e navegar na timeline (`campaign_trace_events`)
+  - Endpoints novos: `GET /api/campaigns/:id/trace` e `GET /api/campaigns/:id/trace-events`
+
 ## 25/12/2025 - Segurança (Sentinel)
 
 - **🛡️ Hardening de headers HTTP (Next.js)**
