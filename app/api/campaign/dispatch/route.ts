@@ -280,13 +280,16 @@ export async function POST(request: NextRequest) {
   }
 
   // Fetch template from local DB cache (source operacional). Documented-only: sem template, sem envio.
-  let template = await templateDb.getByName(templateName)
-  if (!template) {
+  const initialTemplate = await templateDb.getByName(templateName)
+  if (!initialTemplate) {
     return NextResponse.json(
       { error: 'Template não encontrado no banco local. Sincronize Templates antes de disparar.' },
       { status: 400 }
     )
   }
+
+  // A partir daqui, `template` deve ser sempre definido.
+  let template = initialTemplate
 
   // Se o template tem HEADER de mídia, o envio precisa do "link" (URL) da mídia do template.
   // Alguns registros locais (ex.: recém-criados via builder) podem ter apenas handle "4::...".
@@ -305,7 +308,8 @@ export async function POST(request: NextRequest) {
           })
           if (refreshed) {
             await templateDb.upsert([refreshed])
-            template = await templateDb.getByName(templateName)
+            const refreshedLocal = await templateDb.getByName(templateName)
+            if (refreshedLocal) template = refreshedLocal
           }
         }
       } catch (e) {

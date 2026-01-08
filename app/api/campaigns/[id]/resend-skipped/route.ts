@@ -7,9 +7,101 @@ import { getWhatsAppCredentials } from '@/lib/whatsapp-credentials'
 
 import { precheckContactForTemplate } from '@/lib/whatsapp/template-contract'
 import { fetchWithTimeout, safeJson } from '@/lib/server-http'
+import { createHash } from 'crypto'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+function isHttpUrl(value: string): boolean {
+  const v = String(value || '').trim()
+  return /^https?:\/\//i.test(v)
+}
+
+function getTemplateHeaderMediaExampleLink(template: any): { format?: string; example?: string } {
+  const components = (template as any)?.components
+  if (!Array.isArray(components)) return {}
+  const header = components.find((c: any) => String(c?.type || '').toUpperCase() === 'HEADER') as any | undefined
+  if (!header) return {}
+
+  const format = header?.format ? String(header.format).toUpperCase() : undefined
+  if (!format || !['IMAGE', 'VIDEO', 'DOCUMENT', 'GIF'].includes(format)) return { format }
+
+  let exampleObj: any = header.example
+  if (typeof header.example === 'string') {
+    try {
+      exampleObj = JSON.parse(header.example)
+    } catch {
+      exampleObj = undefined
+    }
+  }
+
+  const arr = exampleObj?.header_handle
+  const example = Array.isArray(arr) && typeof arr[0] === 'string' ? String(arr[0]).trim() : undefined
+  return { format, example }
+}
+
+async function fetchSingleTemplateFromMeta(params: {
+  businessAccountId: string
+  accessToken: string
+  templateName: string
+}): Promise<
+  | {
+      name: string
+      language?: string
+      category?: string
+      status?: string
+      components?: unknown
+      parameter_format?: 'positional' | 'named' | string
+      spec_hash?: string | null
+      fetched_at?: string | null
+    }
+  | null
+> {
+  const { businessAccountId, accessToken, templateName } = params
+  const now = new Date().toISOString()
+
+  const url = new URL(`https://graph.facebook.com/v24.0/${businessAccountId}/message_templates`)
+  url.searchParams.set('name', templateName)
+  url.searchParams.set('fields', 'name,language,category,status,components,parameter_format,last_updated_time')
+
+  const res = await fetchWithTimeout(url.toString(), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    timeoutMs: 20_000,
+  })
+
+  const json = (await safeJson<any>(res)) || {}
+  const first = Array.isArray(json?.data) ? json.data[0] : null
+  if (!res.ok || !first?.name) return null
+
+  const parameterFormat = (() => {
+    const pf = String(first.parameter_format || '').toLowerCase()
+    return pf === 'named' ? 'named' : 'positional'
+  })()
+
+  const specPayload = {
+    name: String(first.name),
+    language: String(first.language || 'pt_BR'),
+    category: String(first.category || ''),
+    parameter_format: parameterFormat,
+    components: first.components || [],
+  }
+
+  const specHash = createHash('sha256').update(JSON.stringify(specPayload)).digest('hex')
+
+  return {
+    name: String(first.name),
+    language: String(first.language || 'pt_BR'),
+    category: first.category ? String(first.category) : undefined,
+    status: first.status ? String(first.status) : undefined,
+    components: first.components || [],
+    parameter_format: parameterFormat,
+    spec_hash: specHash,
+    fetched_at: now,
+  }
+}
 
 interface Params {
   params: Promise<{ id: string }>
@@ -67,12 +159,57 @@ export async function POST(_request: Request, { params }: Params) {
     }
 
     // 2) Template precisa existir no cache local (documented-only)
-    const template = await templateDb.getByName(templateName)
-    if (!template) {
+    const initialTemplate = await templateDb.getByName(templateName)
+    if (!initialTemplate) {
       return NextResponse.json(
         { error: 'Template não encontrado no banco local. Sincronize Templates antes de reenviar ignorados.' },
         { status: 400 }
       )
+    }
+
+    let template = initialTemplate
+
+    // Se o template tem HEADER de mídia, o envio precisa de URL (link) da mídia.
+    // Alguns registros locais podem ter apenas handle "4::...". Fazemos refresh pontual na Meta.
+    const headerInfo0 = getTemplateHeaderMediaExampleLink(template)
+    if (headerInfo0.format && ['IMAGE', 'VIDEO', 'DOCUMENT', 'GIF'].includes(headerInfo0.format)) {
+      const example0 = headerInfo0.example
+      if (!example0 || !isHttpUrl(example0)) {
+        try {
+          const creds = await getWhatsAppCredentials()
+          if (creds?.businessAccountId && creds?.accessToken) {
+            const refreshed = await fetchSingleTemplateFromMeta({
+              businessAccountId: creds.businessAccountId,
+              accessToken: creds.accessToken,
+              templateName,
+            })
+            if (refreshed) {
+              await templateDb.upsert([refreshed])
+              const refreshedLocal = await templateDb.getByName(templateName)
+              if (refreshedLocal) template = refreshedLocal
+            }
+          }
+        } catch (e) {
+          console.warn('[ResendSkipped] Falha ao fazer refresh do template na Meta (best-effort):', e)
+        }
+
+        const headerInfo1 = getTemplateHeaderMediaExampleLink(template)
+        if (!headerInfo1.example || !isHttpUrl(headerInfo1.example)) {
+          return NextResponse.json(
+            {
+              error:
+                `O template "${templateName}" possui HEADER ${headerInfo0.format}, mas o cache local não tem URL de mídia para envio.`,
+              action:
+                'Sincronize Templates (Meta → local) e tente novamente. Se o template ainda está em revisão, aguarde aprovação antes de reenviar.',
+              details: {
+                headerFormat: headerInfo0.format,
+                examplePreview: headerInfo1.example || headerInfo0.example || null,
+              },
+            },
+            { status: 400 }
+          )
+        }
+      }
     }
 
     // Snapshot do template na campanha (se ainda não existir)
@@ -435,6 +572,14 @@ export async function POST(_request: Request, { params }: Params) {
       templateName,
       contacts: validForResend,
       templateVariables,
+      templateSnapshot: {
+        name: template.name,
+        language: template.language,
+        parameter_format: (template as any).parameterFormat || 'positional',
+        spec_hash: (template as any).specHash ?? null,
+        fetched_at: (template as any).fetchedAt ?? null,
+        components: (template as any).components || (template as any).content || [],
+      },
       phoneNumberId: credentials.phoneNumberId,
       accessToken: credentials.accessToken,
       isResend: true,
