@@ -87,7 +87,23 @@ const DEFAULT_PERSIST_PHASES = new Set<string>([
   'db_claim_pending_bulk',
   'db_bulk_upsert_contacts',
   'contact_exception',
+  // Observabilidade de envio
+  'meta_send_ok',
   'meta_send_fail',
+  // Retry / refresh de template (mídia weblink 403)
+  'template_refresh_retry_start',
+  'template_refresh_retry_ok',
+  'template_refresh_retry_fail',
+  'template_refresh_retry_skip',
+  // Rehost de mídia do template (preventivo e reativo)
+  'template_media_rehost_prepare_start',
+  'template_media_rehost_prepare_ok',
+  'template_media_rehost_prepare_skip',
+  'template_media_rehost_prepare_error',
+  'template_media_rehost_start',
+  'template_media_rehost_ok',
+  'template_media_rehost_fail',
+  'template_media_rehost_skip',
   'webhook_failed_details',
   'webhook_delivered_applied',
   'webhook_read_applied',
