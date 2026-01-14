@@ -37,53 +37,21 @@ export const useCampaignDetailsController = () => {
   const lastMessagesRef = useRef<ServiceMessagesResponse | undefined>(undefined)
   const loadMoreTokenRef = useRef(0)
 
-  // Warmup polling: nos primeiros 30s, fazemos polling rápido para capturar
-  // a transição DRAFT → SENDING (quando Realtime ainda não está conectado)
-  const mountedAtRef = useRef(Date.now())
-  const [warmupTick, setWarmupTick] = useState(0)
+  // Warmup polling: nos primeiros 30s após carregar ID real, fazemos polling
+  // rápido para capturar a transição DRAFT → SENDING (Realtime não conecta para DRAFT)
+  const warmupStartRef = useRef<Record<string, number>>({})
   const WARMUP_DURATION_MS = 30_000 // 30 segundos
   const WARMUP_INTERVAL_MS = 3_000 // polling a cada 3s durante warmup
 
-  // Reset warmup quando ID muda (ex: temp_xxx → id_real)
+  // Registra início do warmup quando ID muda para um ID real
   useEffect(() => {
-    console.log('[CampaignDetails] ID mudou, resetando warmup para:', id)
-    mountedAtRef.current = Date.now()
-    setWarmupTick(0)
-  }, [id])
-
-  useEffect(() => {
-    // Não faz polling para IDs temporários (queries estão desabilitadas)
-    if (!id || id.startsWith('temp_')) {
-      console.log('[CampaignDetails] Skipping warmup para ID temporário:', id)
-      return
+    if (id && !id.startsWith('temp_') && !warmupStartRef.current[id]) {
+      warmupStartRef.current[id] = Date.now()
+      console.log('[CampaignDetails] Warmup iniciado para ID:', id)
     }
-
-    console.log('[CampaignDetails] Warmup polling iniciado para campanha:', id)
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - mountedAtRef.current
-      if (elapsed < WARMUP_DURATION_MS) {
-        console.log('[CampaignDetails] Warmup tick - elapsed:', elapsed, 'ms')
-        setWarmupTick((t) => t + 1)
-      } else {
-        console.log('[CampaignDetails] Warmup expirou após 30s, parando polling')
-        clearInterval(interval)
-      }
-    }, WARMUP_INTERVAL_MS)
-    return () => clearInterval(interval)
   }, [id])
 
-  const isInWarmupPeriod = useMemo(() => {
-    void warmupTick // dependency para forçar recálculo
-    const inWarmup = Date.now() - mountedAtRef.current < WARMUP_DURATION_MS
-    console.log('[CampaignDetails] isInWarmupPeriod:', inWarmup, '- tick:', warmupTick)
-    return inWarmup
-  }, [warmupTick])
-
-  // Log do refetchInterval atual para debug
-  const currentRefetchInterval = isInWarmupPeriod ? WARMUP_INTERVAL_MS : false
-  console.log('[CampaignDetails] refetchInterval atual:', currentRefetchInterval)
-
-  // Fetch campaign data (com warmup polling para capturar transição DRAFT → SENDING)
+  // Fetch campaign data (com warmup polling via função)
   const campaignQuery = useQuery<Campaign | undefined>({
     queryKey: ['campaign', id],
     queryFn: async () => {
@@ -94,9 +62,39 @@ export const useCampaignDetailsController = () => {
     },
     enabled: !!id && !id.startsWith('temp_'),
     staleTime: 5000,
-    // Warmup polling: nos primeiros 30s, fazemos polling a cada 3s para capturar
-    // a transição DRAFT → SENDING. Depois disso, Realtime + backup polling assumem.
-    refetchInterval: currentRefetchInterval,
+    // Warmup polling usando FUNÇÃO: TanStack Query chama esta função após cada fetch
+    // para determinar o próximo intervalo. Muito mais confiável que valor estático.
+    refetchInterval: (query) => {
+      const campaign = query.state.data
+      const campaignId = id
+
+      // Não faz polling se não tem ID real
+      if (!campaignId || campaignId.startsWith('temp_')) {
+        return false
+      }
+
+      // Verifica se está no período de warmup (30s desde que carregou este ID)
+      const warmupStart = warmupStartRef.current[campaignId]
+      if (!warmupStart) {
+        return false
+      }
+
+      const elapsed = Date.now() - warmupStart
+      const inWarmup = elapsed < WARMUP_DURATION_MS
+
+      // Se está em DRAFT e no warmup, faz polling
+      // Quando mudar para SENDING/COMPLETED, Realtime assume
+      if (inWarmup && campaign?.status === CampaignStatus.DRAFT) {
+        console.log('[CampaignDetails] Warmup polling ativo - elapsed:', elapsed, 'ms')
+        return WARMUP_INTERVAL_MS
+      }
+
+      // Fora do warmup ou não é DRAFT - para o polling
+      if (elapsed >= WARMUP_DURATION_MS) {
+        console.log('[CampaignDetails] Warmup expirou para:', campaignId)
+      }
+      return false
+    },
     select: (fresh) => {
       const merged = mergeCampaignCountersMonotonic(lastCampaignRef.current, fresh)
       lastCampaignRef.current = merged
