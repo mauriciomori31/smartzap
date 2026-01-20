@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { createGoogleGenerativeAI, type GoogleGenerativeAIProviderMetadata } from '@ai-sdk/google'
 import { createClient } from '@/lib/supabase-server'
 import { withDevTools } from '@/lib/ai/devtools'
+import { DEFAULT_MODEL_ID, supportsFileSearch } from '@/lib/ai/model'
 import type { AIAgent, InboxConversation, InboxMessage } from '@/types'
 
 // =============================================================================
@@ -76,7 +77,7 @@ export type SupportResponse = z.infer<typeof supportResponseSchema>
 // Default Configuration
 // =============================================================================
 
-const DEFAULT_MODEL_ID = 'gemini-2.0-flash'
+// DEFAULT_MODEL_ID imported from @/lib/ai/model (gemini-3-flash-preview)
 const DEFAULT_MAX_TOKENS = 2048
 const DEFAULT_TEMPERATURE = 0.7
 
@@ -205,8 +206,13 @@ export async function processSupportAgentV2(
   const baseModel = google(modelId)
   const model = await withDevTools(baseModel, { name: `support-agent:${agent.name}` })
 
-  // Check if agent has a knowledge base configured
-  const hasKnowledgeBase = !!agent.file_search_store_id
+  // Check if agent has a knowledge base configured AND model supports File Search
+  const modelSupportsFS = supportsFileSearch(modelId)
+  const hasKnowledgeBase = !!agent.file_search_store_id && modelSupportsFS
+
+  if (agent.file_search_store_id && !modelSupportsFS) {
+    console.warn(`[AI Agent V2] Model ${modelId} does not support File Search. Knowledge base will be ignored.`)
+  }
 
   let response: SupportResponse | undefined
   let error: string | null = null

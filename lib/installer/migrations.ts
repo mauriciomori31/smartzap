@@ -5,7 +5,39 @@
 
 import fs from 'fs';
 import path from 'path';
+import dns from 'dns';
 import { Client } from 'pg';
+
+/**
+ * Resolve hostname para IPv4 para evitar problemas em ambientes que não suportam IPv6.
+ * Retorna o IP ou o hostname original se falhar.
+ */
+async function resolveToIPv4(hostname: string): Promise<string> {
+  return new Promise((resolve) => {
+    dns.lookup(hostname, { family: 4 }, (err, address) => {
+      if (err || !address) {
+        console.log(`[migrations] Não foi possível resolver ${hostname} para IPv4, usando hostname original`);
+        resolve(hostname);
+      } else {
+        console.log(`[migrations] Resolvido ${hostname} → ${address} (IPv4)`);
+        resolve(address);
+      }
+    });
+  });
+}
+
+/**
+ * Substitui o hostname na URL por um IP (se fornecido).
+ */
+function replaceHostInUrl(urlString: string, newHost: string): string {
+  try {
+    const url = new URL(urlString);
+    url.hostname = newHost;
+    return url.toString();
+  } catch {
+    return urlString;
+  }
+}
 
 // Lista ordenada de migrations a aplicar
 const MIGRATIONS_DIR = path.resolve(process.cwd(), 'supabase/migrations');
@@ -68,6 +100,11 @@ async function connectClientWithRetry(
       return client;
     } catch (err) {
       lastError = err;
+      // Log IMEDIATO do erro para debug
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const errCode = (err as any)?.code || 'N/A';
+      console.error(`[migrations] Erro de conexão (tentativa ${attempt}): code=${errCode}, msg=${errMsg}`);
+
       try {
         await client.end().catch(() => undefined);
       } catch {
@@ -172,25 +209,33 @@ export async function runSchemaMigration(
 
   const normalizedDbUrl = stripSslModeParam(dbUrl);
 
+  onProgress?.({ stage: 'connecting', message: 'Conectando ao banco de dados...' });
+
+  // Resolve hostname para IPv4 para evitar problemas com IPv6 em alguns ambientes (Vercel, etc.)
+  let finalDbUrl = normalizedDbUrl;
+  try {
+    const urlObj = new URL(normalizedDbUrl);
+    const originalHost = urlObj.hostname;
+    console.log(`[migrations] Resolvendo DNS para: ${originalHost}:${urlObj.port || '5432'}`);
+
+    const ipv4Address = await resolveToIPv4(originalHost);
+    if (ipv4Address !== originalHost) {
+      finalDbUrl = replaceHostInUrl(normalizedDbUrl, ipv4Address);
+      console.log(`[migrations] Usando IPv4: ${ipv4Address}`);
+    }
+  } catch (dnsErr) {
+    console.log('[migrations] Erro ao resolver DNS, usando URL original:', dnsErr);
+  }
+
   const createClient = () =>
     new Client({
-      connectionString: normalizedDbUrl,
+      connectionString: finalDbUrl,
       // Supabase DB usa TLS; em algumas redes um proxy/MITM pode inserir cert
       // que Node não confia. Preferimos "no-verify" para evitar falha.
       ssl: needsSsl(dbUrl) ? { rejectUnauthorized: false } : undefined,
-      // Timeout de conexão: 15s é suficiente para resolver DNS e estabelecer TCP
+      // Timeout de conexão: 15s é suficiente para estabelecer TCP + SSL handshake
       connectionTimeoutMillis: 15_000,
     });
-
-  onProgress?.({ stage: 'connecting', message: 'Conectando ao banco de dados...' });
-
-  // Log do host para debug (sem expor credenciais)
-  try {
-    const urlObj = new URL(normalizedDbUrl);
-    console.log(`[migrations] Conectando ao host: ${urlObj.hostname}:${urlObj.port || '5432'}`);
-  } catch {
-    console.log('[migrations] Conectando ao banco de dados...');
-  }
 
   // Retry mais agressivo: menos tentativas, delays menores (total max ~20s de espera)
   const client = await connectClientWithRetry(createClient, { maxAttempts: 3, initialDelayMs: 2000 });

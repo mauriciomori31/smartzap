@@ -59,10 +59,12 @@ export const DEFAULT_MODEL_ID = 'gemini-3-flash-preview'
  * Available models for AI agents
  * Organized by generation (newest first)
  *
- * File Search API compatible models:
+ * File Search API compatible models (per Google docs):
  * - gemini-3-pro-preview
  * - gemini-3-flash-preview
  * - gemini-2.5-pro
+ *
+ * NOT compatible with File Search:
  * - gemini-2.5-flash
  * - gemini-2.0-flash
  */
@@ -93,17 +95,17 @@ export const AI_AGENT_MODELS = [
   {
     id: 'gemini-2.5-flash',
     name: 'Gemini 2.5 Flash',
-    description: 'Rápido e eficiente, bom custo-benefício',
+    description: 'Rápido e eficiente (SEM suporte a File Search)',
     generation: 2.5,
-    supportsFileSearch: true,
+    supportsFileSearch: false,
   },
   // Gemini 2.0 - Previous generation
   {
     id: 'gemini-2.0-flash',
     name: 'Gemini 2.0 Flash',
-    description: 'Geração anterior, estável',
+    description: 'Geração anterior (SEM suporte a File Search)',
     generation: 2.0,
-    supportsFileSearch: true,
+    supportsFileSearch: false,
   },
 ] as const
 
