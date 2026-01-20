@@ -84,50 +84,12 @@ const DEFAULT_TEMPERATURE = 0.7
 // System Prompt Builder
 // =============================================================================
 
-function buildSystemPrompt(
-  agent: AIAgent,
-  conversation: InboxConversation,
-  hasKnowledgeBase: boolean
-): string {
-  const contactName = conversation.contact?.name || 'Cliente'
-
-  const knowledgeBaseInstructions = hasKnowledgeBase
-    ? `
-KNOWLEDGE BASE (BASE DE CONHECIMENTO):
-Você tem acesso a uma base de conhecimento com documentos relevantes.
-- A ferramenta "file_search" será usada automaticamente para buscar informações
-- SEMPRE baseie suas respostas nas informações encontradas na base de conhecimento
-- Cite as fontes quando usar informações da base de conhecimento
-- Se a informação não estiver na base, informe ao cliente que vai verificar`
-    : `
-NOTA: Este agente não possui base de conhecimento configurada.
-Responda com base no contexto da conversa e no seu conhecimento geral.`
-
-  return `${agent.system_prompt}
-
-CONTEXTO DA CONVERSA:
-- Nome do cliente: ${contactName}
-- Telefone: ${conversation.phone}
-- Prioridade: ${conversation.priority || 'normal'}
-- Total de mensagens: ${conversation.total_messages}
-${knowledgeBaseInstructions}
-
-INSTRUÇÕES IMPORTANTES:
-1. Responda sempre em português do Brasil
-2. Seja educado, profissional e empático
-3. Se não souber a resposta, admita e ofereça alternativas
-4. Detecte o sentimento do cliente (positivo, neutro, negativo, frustrado)
-5. Se o cliente estiver frustrado ou pedir para falar com humano, defina shouldHandoff como true
-6. Inclua as fontes utilizadas quando aplicável (especialmente da base de conhecimento)
-
-CRITÉRIOS PARA TRANSFERÊNCIA (shouldHandoff = true):
-- Cliente explicitamente pede para falar com atendente/humano
-- Cliente expressa frustração repetida (3+ mensagens negativas)
-- Assunto sensível (reclamação formal, problema financeiro, dados pessoais)
-- Você não consegue ajudar após 2 tentativas
-- Detecção de urgência real (emergência, prazo crítico)
-
-IMPORTANTE: Você DEVE usar a ferramenta "respond" para enviar sua resposta.`
+/**
+ * Returns the system prompt exactly as configured in the UI
+ * No enrichment - Google's API handles context automatically
+ */
+function getSystemPrompt(agent: AIAgent): string {
+  return agent.system_prompt
 }
 
 // =============================================================================
@@ -256,54 +218,76 @@ export async function processSupportAgentV2(
       console.log(`[AI Agent V2] Enabling File Search with store: ${agent.file_search_store_id}`)
     }
 
-    // Define the respond tool
-    const respondTool = tool({
-      description: 'Envia uma resposta estruturada ao usuário. SEMPRE use esta ferramenta após processar a mensagem.',
-      inputSchema: supportResponseSchema,
-      execute: async (params) => {
-        // Store the response for later use
-        response = params
-        return params
-      },
-    })
+    // When using File Search, we can't combine with other tools
+    // So we use two different approaches:
+    // 1. With File Search: use JSON schema for structured output
+    // 2. Without File Search: use respond tool
 
-    // Use generateText with tools for structured output
-    // TODO: File Search disabled temporarily - causes API issues
-    const result = await generateText({
-      model,
-      system: buildSystemPrompt(agent, conversation, hasKnowledgeBase),
-      messages: aiMessages,
-      tools: {
-        respond: respondTool,
-      },
-      toolChoice: 'required',
-      temperature: DEFAULT_TEMPERATURE,
-      maxOutputTokens: DEFAULT_MAX_TOKENS,
-    })
+    if (hasKnowledgeBase && agent.file_search_store_id) {
+      // Use File Search with JSON schema (can't combine with other tools)
+      const result = await generateText({
+        model,
+        system: getSystemPrompt(agent),
+        messages: aiMessages,
+        tools: {
+          file_search: google.tools.fileSearch({
+            fileSearchStoreNames: [agent.file_search_store_id],
+            topK: 5,
+          }),
+        },
+        temperature: DEFAULT_TEMPERATURE,
+        maxOutputTokens: DEFAULT_MAX_TOKENS,
+      })
 
-    // Extract grounding metadata if available (from File Search)
-    const providerMetadata = result.providerMetadata as GoogleGenerativeAIProviderMetadata | undefined
-    const groundingMetadata = providerMetadata?.groundingMetadata
+      // Extract grounding metadata
+      const providerMetadata = result.providerMetadata as GoogleGenerativeAIProviderMetadata | undefined
+      const groundingMetadata = providerMetadata?.groundingMetadata
 
-    if (groundingMetadata?.groundingChunks) {
-      groundingSources = groundingMetadata.groundingChunks
-        .filter((chunk) => chunk.retrievedContext)
-        .map((chunk) => ({
-          title: chunk.retrievedContext?.title || 'Documento',
-          content: chunk.retrievedContext?.text || '',
-        }))
+      if (groundingMetadata?.groundingChunks) {
+        groundingSources = groundingMetadata.groundingChunks
+          .filter((chunk) => chunk.retrievedContext)
+          .map((chunk) => ({
+            title: chunk.retrievedContext?.title || 'Documento',
+            content: chunk.retrievedContext?.text || '',
+          }))
+        console.log(`[AI Agent V2] Found ${groundingSources.length} grounding sources`)
+      }
 
-      console.log(`[AI Agent V2] Found ${groundingSources.length} grounding sources from knowledge base`)
-    }
+      // Parse text response into structured format
+      response = {
+        message: result.text,
+        sentiment: 'neutral',
+        confidence: groundingSources.length > 0 ? 0.9 : 0.5,
+        shouldHandoff: false,
+        sources: groundingSources,
+      }
+    } else {
+      // Without File Search: use respond tool for structured output
+      const respondTool = tool({
+        description: 'Envia uma resposta estruturada ao usuário.',
+        inputSchema: supportResponseSchema,
+        execute: async (params) => {
+          response = params
+          return params
+        },
+      })
 
-    // If no response was captured via tool execute, something went wrong
-    if (!response) {
-      throw new Error('No response generated from AI - tool was not called')
-    }
+      const result = await generateText({
+        model,
+        system: getSystemPrompt(agent),
+        messages: aiMessages,
+        tools: {
+          respond: respondTool,
+        },
+        toolChoice: 'required',
+        temperature: DEFAULT_TEMPERATURE,
+        maxOutputTokens: DEFAULT_MAX_TOKENS,
+      })
 
-    // Merge grounding sources with any sources from the response
-    if (groundingSources.length > 0) {
-      response.sources = [...(response.sources || []), ...groundingSources]
+      // Response is captured via tool execute
+      if (!response) {
+        throw new Error('No response generated from AI - tool was not called')
+      }
     }
   } catch (err) {
     error = err instanceof Error ? err.message : 'Unknown error'

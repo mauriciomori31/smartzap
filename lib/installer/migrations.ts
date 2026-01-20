@@ -31,13 +31,20 @@ async function sleep(ms: number) {
 }
 
 function isRetryableConnectError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
+  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
   return (
-    msg.includes('ENOTFOUND') ||
-    msg.includes('EAI_AGAIN') ||
-    msg.includes('ECONNREFUSED') ||
-    msg.includes('ETIMEDOUT') ||
-    msg.includes('timeout')
+    msg.includes('enotfound') ||
+    msg.includes('eai_again') ||
+    msg.includes('econnrefused') ||
+    msg.includes('etimedout') ||
+    msg.includes('econnreset') ||
+    msg.includes('timeout') ||
+    msg.includes('connection refused') ||
+    msg.includes('connection reset') ||
+    msg.includes('socket hang up') ||
+    // Erros temporários de SSL/TLS
+    msg.includes('ssl routines') ||
+    msg.includes('certificate') && msg.includes('expired')
   );
 }
 
@@ -68,6 +75,13 @@ async function connectClientWithRetry(
       }
 
       if (!isRetryableConnectError(err) || attempt === maxAttempts) {
+        // Log detalhado para debug
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const errStack = err instanceof Error ? err.stack : '';
+        console.error(
+          `[migrations] Falha definitiva na conexão após ${attempt} tentativas:`,
+          { error: errMsg, stack: errStack }
+        );
         throw err;
       }
 
@@ -164,10 +178,22 @@ export async function runSchemaMigration(
       // Supabase DB usa TLS; em algumas redes um proxy/MITM pode inserir cert
       // que Node não confia. Preferimos "no-verify" para evitar falha.
       ssl: needsSsl(dbUrl) ? { rejectUnauthorized: false } : undefined,
+      // Timeout de conexão: 15s é suficiente para resolver DNS e estabelecer TCP
+      connectionTimeoutMillis: 15_000,
     });
 
   onProgress?.({ stage: 'connecting', message: 'Conectando ao banco de dados...' });
-  const client = await connectClientWithRetry(createClient, { maxAttempts: 5, initialDelayMs: 3000 });
+
+  // Log do host para debug (sem expor credenciais)
+  try {
+    const urlObj = new URL(normalizedDbUrl);
+    console.log(`[migrations] Conectando ao host: ${urlObj.hostname}:${urlObj.port || '5432'}`);
+  } catch {
+    console.log('[migrations] Conectando ao banco de dados...');
+  }
+
+  // Retry mais agressivo: menos tentativas, delays menores (total max ~20s de espera)
+  const client = await connectClientWithRetry(createClient, { maxAttempts: 3, initialDelayMs: 2000 });
 
   try {
     // Aguarda storage se não for pulado
