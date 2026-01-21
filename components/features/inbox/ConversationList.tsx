@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ConversationItem } from './ConversationItem'
+import { AttendantsPopover } from './AttendantsPopover'
 import type { InboxConversation, InboxLabel, ConversationStatus, ConversationMode } from '@/types'
 
 export interface ConversationListProps {
@@ -103,6 +104,9 @@ export function ConversationList({
               </button>
             )}
           </div>
+
+          {/* Attendants button */}
+          <AttendantsPopover />
 
           {/* Filter button */}
           <DropdownMenu open={showFilters} onOpenChange={setShowFilters}>

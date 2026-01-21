@@ -192,6 +192,9 @@ async function generateWithUnifiedPrompt(
   promptTemplate: string,
   strategy: 'marketing' | 'utility' | 'bypass'
 ): Promise<GeneratedTemplate[]> {
+  console.log('[GENERATE] Building prompt with template length:', promptTemplate.length)
+  console.log('[GENERATE] Template preview (first 200 chars):', promptTemplate.substring(0, 200))
+
   const utilityPrompt = buildUtilityGenerationPrompt({
     prompt: userPrompt,
     quantity,
@@ -200,13 +203,25 @@ async function generateWithUnifiedPrompt(
     template: promptTemplate,
   })
 
-  const rawTemplates = await generateJSON<Array<Record<string, unknown>>>(
-    { prompt: utilityPrompt }
-  )
+  console.log('[GENERATE] Final prompt length:', utilityPrompt.length)
+  console.log('[GENERATE] Final prompt (last 500 chars):', utilityPrompt.slice(-500))
+  console.log('[GENERATE] Calling generateJSON...')
 
-  if (!Array.isArray(rawTemplates)) throw new Error('Response is not an array')
+  try {
+    const rawTemplates = await generateJSON<Array<Record<string, unknown>>>(
+      { prompt: utilityPrompt }
+    )
 
-  return rawTemplates.map((t, index) => normalizeTemplate(t, index, language, primaryUrl, strategy))
+    console.log('[GENERATE] generateJSON returned:', typeof rawTemplates, Array.isArray(rawTemplates) ? `array(${rawTemplates.length})` : rawTemplates)
+
+    if (!Array.isArray(rawTemplates)) throw new Error('Response is not an array')
+
+    return rawTemplates.map((t, index) => normalizeTemplate(t, index, language, primaryUrl, strategy))
+  } catch (error) {
+    console.error('[GENERATE] generateJSON failed:', error instanceof Error ? error.message : error)
+    console.error('[GENERATE] Full error:', error)
+    throw error
+  }
 }
 
 // ============================================================================
@@ -439,8 +454,16 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+    // Debug: retornar detalhes do erro
     return NextResponse.json(
-      { error: 'Falha ao gerar templates com IA' },
+      {
+        error: 'Falha ao gerar templates com IA',
+        debug: {
+          message: error instanceof Error ? error.message : String(error),
+          name: error instanceof Error ? error.name : 'Unknown',
+          stack: error instanceof Error ? error.stack?.split('\n').slice(0, 5) : null,
+        }
+      },
       { status: 500 }
     )
   }

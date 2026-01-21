@@ -1,4 +1,5 @@
 export { BookingConfigSection } from './BookingConfigSection';
+export { BookingFlowSection } from './BookingFlowSection';
 export { CalendarStatusSection } from './CalendarStatusSection';
 export { CalendarWizardModal } from './CalendarWizardModal';
 export { WizardSidebar } from './WizardSidebar';

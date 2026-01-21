@@ -9,6 +9,7 @@ import {
 } from '../../../hooks/settings/useCalendarBooking';
 import {
   BookingConfigSection,
+  BookingFlowSection,
   CalendarStatusSection,
   CalendarWizardModal,
 } from './calendar';
@@ -139,6 +140,9 @@ export function CalendarBookingPanel({
             handleSaveCalendarBooking={hook.handleSaveCalendarBooking}
             isSavingCalendarBooking={isSavingCalendarBooking}
           />
+
+          {/* Booking Flow Selection */}
+          <BookingFlowSection />
 
           {/* Botão de colapsar */}
           <div className="mt-6 flex justify-center">
