@@ -24,6 +24,20 @@ interface CredentialsStepProps {
   totalSteps: number;
 }
 
+// Validação de formato dos IDs da Meta (geralmente 15-20 dígitos numéricos)
+function isValidMetaId(value: string): boolean {
+  const trimmed = value.trim();
+  // Deve ser apenas números e ter entre 10-25 dígitos
+  return /^\d{10,25}$/.test(trimmed);
+}
+
+// Validação básica do formato do token Meta (começa com EAA)
+function isValidTokenFormat(value: string): boolean {
+  const trimmed = value.trim();
+  // Tokens Meta começam com EAA e têm pelo menos 50 caracteres
+  return trimmed.startsWith('EAA') && trimmed.length >= 50;
+}
+
 export function CredentialsStep({
   credentials,
   onCredentialsChange,
@@ -32,10 +46,20 @@ export function CredentialsStep({
   stepNumber,
   totalSteps,
 }: CredentialsStepProps) {
-  const isValid =
-    credentials.phoneNumberId.trim() &&
-    credentials.businessAccountId.trim() &&
-    credentials.accessToken.trim();
+  const phoneId = credentials.phoneNumberId.trim();
+  const wabaId = credentials.businessAccountId.trim();
+  const token = credentials.accessToken.trim();
+
+  // Validações de formato
+  const phoneIdValid = isValidMetaId(phoneId);
+  const wabaIdValid = isValidMetaId(wabaId);
+  const tokenValid = isValidTokenFormat(token);
+
+  // IDs não podem ser iguais - são campos diferentes
+  const idsAreEqual = phoneId && wabaId && phoneId === wabaId;
+
+  // Todos os campos preenchidos e com formato válido
+  const isValid = phoneIdValid && wabaIdValid && tokenValid && !idsAreEqual;
 
   return (
     <div className="space-y-6">
@@ -66,9 +90,16 @@ export function CredentialsStep({
             onChange={(e) =>
               onCredentialsChange({ ...credentials, phoneNumberId: e.target.value })
             }
-            className="font-mono"
+            className={`font-mono ${phoneId && !phoneIdValid ? 'border-red-500 focus:border-red-500' : ''}`}
           />
-          <p className="text-xs text-zinc-500">Parece com: 123456789012345</p>
+          {phoneId && !phoneIdValid ? (
+            <p className="text-xs text-red-400 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              Formato inválido. Deve conter apenas números (15-20 dígitos).
+            </p>
+          ) : (
+            <p className="text-xs text-zinc-500">Parece com: 123456789012345</p>
+          )}
         </div>
 
         {/* Business Account ID */}
@@ -85,9 +116,21 @@ export function CredentialsStep({
             onChange={(e) =>
               onCredentialsChange({ ...credentials, businessAccountId: e.target.value })
             }
-            className="font-mono"
+            className={`font-mono ${(wabaId && !wabaIdValid) || idsAreEqual ? 'border-red-500 focus:border-red-500' : ''}`}
           />
-          <p className="text-xs text-zinc-500">Também conhecido como WABA ID</p>
+          {idsAreEqual ? (
+            <p className="text-xs text-red-400 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              WABA ID deve ser diferente do Phone Number ID. São campos distintos.
+            </p>
+          ) : wabaId && !wabaIdValid ? (
+            <p className="text-xs text-red-400 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              Formato inválido. Deve conter apenas números (15-20 dígitos).
+            </p>
+          ) : (
+            <p className="text-xs text-zinc-500">Também conhecido como WABA ID (diferente do Phone ID)</p>
+          )}
         </div>
 
         {/* Access Token */}
@@ -105,11 +148,18 @@ export function CredentialsStep({
             onChange={(e) =>
               onCredentialsChange({ ...credentials, accessToken: e.target.value })
             }
-            className="font-mono"
+            className={`font-mono ${token && !tokenValid ? 'border-red-500 focus:border-red-500' : ''}`}
           />
-          <p className="text-xs text-zinc-500">
-            Clique em "Generate" se não tiver um token
-          </p>
+          {token && !tokenValid ? (
+            <p className="text-xs text-red-400 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              Formato inválido. Token Meta deve começar com "EAA" e ter pelo menos 50 caracteres.
+            </p>
+          ) : (
+            <p className="text-xs text-zinc-500">
+              Clique em "Generate" se não tiver um token
+            </p>
+          )}
         </div>
       </div>
 

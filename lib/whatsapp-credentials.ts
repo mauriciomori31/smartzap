@@ -2,9 +2,9 @@ import { settingsDb } from '@/lib/supabase-db'
 
 /**
  * WhatsApp Credentials Helper
- * 
- * Centralizes credential management using Supabase Settings (Primary)
- * and Environment Variables (Fallback).
+ *
+ * Centraliza gerenciamento de credenciais usando apenas Supabase Settings.
+ * Credenciais são configuradas via UI no onboarding pós-instalação.
  */
 
 export interface WhatsAppCredentials {
@@ -16,21 +16,15 @@ export interface WhatsAppCredentials {
 }
 
 /**
- * Get WhatsApp credentials
- * 
- * Priority:
- * 1. Supabase Settings (User configured)
- * 2. Environment Variables (Hardcoded fallback)
+ * Get WhatsApp credentials from database
+ *
+ * Fonte única: Supabase Settings (configurado via UI)
  */
 export async function getWhatsAppCredentials(): Promise<WhatsAppCredentials | null> {
   try {
-    // 1. Try Supabase Settings
     const settings = await settingsDb.getAll()
 
-    // 2. Fallback to Env if missing in DB
-    const phoneNumberId = settings.phoneNumberId || process.env.WHATSAPP_PHONE_ID
-    const businessAccountId = settings.businessAccountId || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID
-    const accessToken = settings.accessToken || process.env.WHATSAPP_TOKEN
+    const { phoneNumberId, businessAccountId, accessToken } = settings
 
     if (phoneNumberId && businessAccountId && accessToken) {
       return {
@@ -43,18 +37,6 @@ export async function getWhatsAppCredentials(): Promise<WhatsAppCredentials | nu
     return null
   } catch (error) {
     console.error('Error fetching WhatsApp credentials:', error)
-    // Fallback to env on error
-    const phoneNumberId = process.env.WHATSAPP_PHONE_ID
-    const businessAccountId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID
-    const accessToken = process.env.WHATSAPP_TOKEN
-
-    if (phoneNumberId && businessAccountId && accessToken) {
-      return {
-        phoneNumberId,
-        businessAccountId,
-        accessToken,
-      }
-    }
     return null
   }
 }
@@ -68,18 +50,13 @@ export async function isWhatsAppConfigured(): Promise<boolean> {
 }
 
 /**
- * Get credentials source (for debugging/UI)
+ * Check if WhatsApp is connected (credentials exist and isConnected flag is true)
  */
-export async function getCredentialsSource(): Promise<'db' | 'env' | 'none'> {
-  const settings = await settingsDb.getAll()
-
-  if (settings.phoneNumberId && settings.accessToken) {
-    return 'db'
+export async function isWhatsAppConnected(): Promise<boolean> {
+  try {
+    const settings = await settingsDb.getAll()
+    return settings.isConnected && Boolean(settings.phoneNumberId && settings.accessToken)
+  } catch {
+    return false
   }
-
-  if (process.env.WHATSAPP_PHONE_ID && process.env.WHATSAPP_TOKEN) {
-    return 'env'
-  }
-
-  return 'none'
 }

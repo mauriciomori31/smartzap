@@ -10,7 +10,6 @@ import { StatusBadge } from '@/components/ui/status-badge';
 
 export interface MetaAppPanelProps {
   metaApp?: {
-    source: 'none' | 'db' | 'env';
     appId: string | null;
     hasAppSecret: boolean;
     isConfigured: boolean;
@@ -131,7 +130,7 @@ export function MetaAppPanel({
         <div className="rounded-xl border border-[var(--ds-border-default)] bg-[var(--ds-bg-elevated)] p-4">
           <div className="text-xs text-[var(--ds-text-secondary)]">Fonte</div>
           <div className="mt-1 text-sm text-[var(--ds-text-primary)]">
-            {metaAppLoading ? '—' : metaApp?.source === 'db' ? 'Banco (Supabase)' : metaApp?.source === 'env' ? 'Env vars' : '—'}
+            {metaAppLoading ? '—' : metaApp?.isConfigured ? 'Banco (Supabase)' : '—'}
           </div>
         </div>
       </div>
@@ -147,7 +146,7 @@ export function MetaAppPanel({
               <Edit2 size={14} /> Configurar App ID/Secret
             </button>
 
-            {metaApp?.source === 'db' && metaApp?.isConfigured && (
+            {metaApp?.isConfigured && (
               <button
                 type="button"
                 onClick={handleRemove}

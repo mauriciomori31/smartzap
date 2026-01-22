@@ -13,6 +13,8 @@ export type OnboardingStep =
   | 'add-whatsapp'      // Passo 3 - adicionar WhatsApp
   | 'credentials'       // Passo 4 - copiar credenciais
   | 'test-connection'   // Passo 5 - testar
+  | 'configure-webhook' // Passo 6 - configurar webhook
+  | 'create-permanent-token' // Passo 7 - token permanente (opcional)
   | 'direct-credentials' // Caminho B - input direto
   | 'complete';         // Concluído
 
@@ -129,6 +131,8 @@ export function useOnboardingProgress() {
         'add-whatsapp',
         'credentials',
         'test-connection',
+        'configure-webhook',
+        'create-permanent-token',
         'complete',
       ];
 
@@ -168,6 +172,8 @@ export function useOnboardingProgress() {
         'add-whatsapp',
         'credentials',
         'test-connection',
+        'configure-webhook',
+        'create-permanent-token',
       ];
 
       if (prev.path === 'guided') {
@@ -270,12 +276,14 @@ export function useOnboardingProgress() {
       'add-whatsapp',
       'credentials',
       'test-connection',
+      'configure-webhook',
+      'create-permanent-token',
     ];
     const index = guidedSteps.indexOf(progress.currentStep);
     return index >= 0 ? index + 1 : 0;
   }, [progress.currentStep]);
 
-  const totalSteps = 5;
+  const totalSteps = 7;
 
   return {
     // State

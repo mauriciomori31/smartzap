@@ -269,6 +269,22 @@ export async function POST(request: NextRequest) {
 
     if (businessIdProvided) {
       wabaInference = { attempted: true, method: 'provided' }
+
+      // Validar formato do WABA (deve ser numérico, 10-25 dígitos)
+      if (!/^\d{10,25}$/.test(businessIdProvided)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'O Business Account ID (WABA) tem formato inválido. Deve conter apenas números.',
+            details: {
+              providedBusinessAccountId: businessIdProvided,
+              hint: 'O WABA ID geralmente tem 15-20 dígitos numéricos. Verifique no Meta Business Manager.',
+            },
+          },
+          { status: 400 }
+        )
+      }
+
       const link = await wabaHasPhoneNumber({
         wabaId: businessIdProvided,
         phoneNumberId,
@@ -285,14 +301,17 @@ export async function POST(request: NextRequest) {
             details: {
               providedBusinessAccountId: businessIdProvided,
               phoneNumberId,
+              hint: 'Verifique se o Business Account ID está correto. Pode ser que você tenha copiado o Phone Number ID no lugar errado.',
             },
           },
           { status: 400 }
         )
       } else {
-        // Não conseguimos validar o vínculo (best-effort) — mas o Phone está acessível.
-        wabaId = businessIdProvided
-        wabaInference.note = 'Não foi possível validar o vínculo via /{waba}/phone_numbers (token pode não ter acesso ao WABA).' 
+        // Não conseguimos validar o vínculo - erro na chamada à API
+        // Não assumir que está ok - retornar warning mas não confirmar
+        wabaId = null // Não confirmar o WABA
+        wabaInference.note = link.graphError?.message
+          || 'Não foi possível validar se o Phone Number pertence a este WABA. Verifique se o ID está correto.'
       }
     } else {
       // Tentativa best-effort: /debug_token (precisa META_APP_ID + META_APP_SECRET)

@@ -1,11 +1,8 @@
 import { settingsDb } from '@/lib/supabase-db'
 
-export type MetaAppCredentialsSource = 'db' | 'env' | 'none'
-
 export interface MetaAppCredentials {
   appId: string
   appSecret: string
-  source: MetaAppCredentialsSource
 }
 
 /**
@@ -13,25 +10,16 @@ export interface MetaAppCredentials {
  *
  * Necessário para APIs da Meta que usam caminhos baseados em /{app_id}/...
  * (ex.: Resumable Upload API) mas não exigem appSecret.
+ *
+ * Fonte única: Supabase Settings (configurado via UI)
  */
-export async function getMetaAppId(): Promise<{
-  appId: string
-  source: MetaAppCredentialsSource
-} | null> {
+export async function getMetaAppId(): Promise<string | null> {
   try {
     const dbAppIdRaw = await settingsDb.get('metaAppId')
-    const dbAppId = String(dbAppIdRaw || '').trim()
-    const envAppId = String(process.env.META_APP_ID || '').trim()
-
-    const appId = (dbAppId || envAppId).trim()
-    if (!appId) return null
-
-    const source: MetaAppCredentialsSource = dbAppId ? 'db' : (envAppId ? 'env' : 'none')
-    return { appId, source }
+    const appId = String(dbAppIdRaw || '').trim()
+    return appId || null
   } catch {
-    const envAppId = String(process.env.META_APP_ID || '').trim()
-    if (!envAppId) return null
-    return { appId: envAppId, source: 'env' }
+    return null
   }
 }
 
@@ -40,40 +28,30 @@ export async function getMetaAppId(): Promise<{
  *
  * Usadas para validação forte de tokens via Graph API `/debug_token`.
  *
- * Prioridade:
- * 1) Supabase `settings` (metaAppId/metaAppSecret)
- * 2) Env vars (META_APP_ID/META_APP_SECRET)
+ * Fonte única: Supabase Settings (configurado via UI)
  */
 export async function getMetaAppCredentials(): Promise<MetaAppCredentials | null> {
   try {
-    // IMPORTANTE: settingsDb.getAll() retorna apenas um subconjunto (AppSettings) e
-    // não inclui chaves arbitrárias como metaAppId/metaAppSecret.
-    // Então precisamos ler as chaves diretamente.
     const [dbAppId, dbSecret] = await Promise.all([
       settingsDb.get('metaAppId'),
       settingsDb.get('metaAppSecret'),
     ])
 
-    const appId = String(dbAppId || '').trim() || String(process.env.META_APP_ID || '').trim()
-    const appSecret = String(dbSecret || '').trim() || String(process.env.META_APP_SECRET || '').trim()
+    const appId = String(dbAppId || '').trim()
+    const appSecret = String(dbSecret || '').trim()
 
     if (!appId || !appSecret) return null
 
-    const source: MetaAppCredentialsSource =
-      String(dbAppId || '').trim() && String(dbSecret || '').trim() ? 'db'
-      : (String(process.env.META_APP_ID || '').trim() && String(process.env.META_APP_SECRET || '').trim() ? 'env' : 'none')
-
-    return { appId, appSecret, source }
+    return { appId, appSecret }
   } catch {
-    const appId = String(process.env.META_APP_ID || '').trim()
-    const appSecret = String(process.env.META_APP_SECRET || '').trim()
-    if (!appId || !appSecret) return null
-    return { appId, appSecret, source: 'env' }
+    return null
   }
 }
 
+/**
+ * Retorna configuração pública do Meta App (sem expor secret)
+ */
 export async function getMetaAppConfigPublic(): Promise<{
-  source: MetaAppCredentialsSource
   appId: string | null
   hasAppSecret: boolean
   isConfigured: boolean
@@ -84,36 +62,19 @@ export async function getMetaAppConfigPublic(): Promise<{
       settingsDb.get('metaAppSecret'),
     ])
 
-    const dbAppId = String(dbAppIdRaw || '').trim()
-    const dbSecret = String(dbSecretRaw || '').trim()
-
-    const envAppId = String(process.env.META_APP_ID || '').trim()
-    const envSecret = String(process.env.META_APP_SECRET || '').trim()
-
-    const appId = (dbAppId || envAppId) || null
-    const hasAppSecret = Boolean(dbSecret || envSecret)
-
-    const source: MetaAppCredentialsSource =
-      dbAppId || dbSecret ? 'db'
-      : (envAppId || envSecret ? 'env' : 'none')
+    const appId = String(dbAppIdRaw || '').trim() || null
+    const hasAppSecret = Boolean(String(dbSecretRaw || '').trim())
 
     return {
-      source,
       appId,
       hasAppSecret,
       isConfigured: Boolean(appId && hasAppSecret),
     }
   } catch {
-    const envAppId = String(process.env.META_APP_ID || '').trim()
-    const envSecret = String(process.env.META_APP_SECRET || '').trim()
-    const appId = envAppId || null
-    const hasAppSecret = Boolean(envSecret)
-    const source: MetaAppCredentialsSource = (envAppId || envSecret) ? 'env' : 'none'
     return {
-      source,
-      appId,
-      hasAppSecret,
-      isConfigured: Boolean(appId && hasAppSecret),
+      appId: null,
+      hasAppSecret: false,
+      isConfigured: false,
     }
   }
 }

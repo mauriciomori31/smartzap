@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getWhatsAppCredentials, getCredentialsSource } from '@/lib/whatsapp-credentials'
+import { getWhatsAppCredentials } from '@/lib/whatsapp-credentials'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { fetchWithTimeout, safeJson } from '@/lib/server-http'
 
@@ -123,7 +123,6 @@ export async function GET() {
 
   // 3. Check WhatsApp credentials
   try {
-    const source = await getCredentialsSource()
     const credentials = await getWhatsAppCredentials()
 
     if (credentials) {
@@ -138,7 +137,7 @@ export async function GET() {
         const data = await safeJson<any>(response)
         result.services.whatsapp = {
           status: 'ok',
-          source,
+          source: 'db',
           phoneNumber: data?.display_phone_number,
           message: data?.display_phone_number ? `Connected: ${data.display_phone_number}` : 'Connected',
         }
@@ -146,7 +145,7 @@ export async function GET() {
         const error = await safeJson<any>(response)
         result.services.whatsapp = {
           status: 'error',
-          source,
+          source: 'db',
           message: error?.error?.message || 'Token invalid or expired',
         }
         result.overall = 'degraded'

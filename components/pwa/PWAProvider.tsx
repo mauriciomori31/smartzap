@@ -57,16 +57,22 @@ export function PWAProvider({ children }: PWAProviderProps) {
   const [showUpdateBanner, setShowUpdateBanner] = useState(false)
   const [installDismissed, setInstallDismissed] = useState(false)
 
-  // Mostrar banner de instalação após 30s se disponível
+  // Detecta se é mobile (PWA install é mais relevante em mobile)
+  const isMobile = typeof window !== 'undefined' && (
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 0 && window.innerWidth < 768)
+  )
+
+  // Mostrar banner de instalação após 30s se disponível (APENAS mobile)
   useEffect(() => {
-    if (sw.isInstallable && !installDismissed) {
+    if (sw.isInstallable && !installDismissed && isMobile) {
       const timer = setTimeout(() => {
         setShowInstallBanner(true)
       }, 30000) // 30 segundos
 
       return () => clearTimeout(timer)
     }
-  }, [sw.isInstallable, installDismissed])
+  }, [sw.isInstallable, installDismissed, isMobile])
 
   // Mostrar banner de atualização imediatamente
   useEffect(() => {

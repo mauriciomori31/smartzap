@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getWhatsAppCredentials, getCredentialsSource } from '@/lib/whatsapp-credentials'
+import { getWhatsAppCredentials } from '@/lib/whatsapp-credentials'
 import { supabase } from '@/lib/supabase'
 import { fetchWithTimeout } from '@/lib/server-http'
 
@@ -369,7 +369,6 @@ export async function GET() {
     // 3. WHATSAPP
     (async () => {
       try {
-        const source = await getCredentialsSource()
         const credentials = await getWhatsAppCredentials()
 
         if (credentials) {
@@ -383,7 +382,7 @@ export async function GET() {
             const data = await res.json()
             response.health.services.whatsapp = {
               status: 'ok',
-              source,
+              source: 'db',
               phoneNumber: data.display_phone_number,
             }
 
@@ -403,7 +402,7 @@ export async function GET() {
             response.usage.whatsapp.tierLimit = tierLimits[response.usage.whatsapp.tier] || 250
           } else {
             const error = await res.json()
-            response.health.services.whatsapp = { status: 'error', source, message: error.error?.message || 'Token invalid' }
+            response.health.services.whatsapp = { status: 'error', source: 'db', message: error.error?.message || 'Token invalid' }
             response.health.overall = 'degraded'
           }
         } else {

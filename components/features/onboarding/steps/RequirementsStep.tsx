@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { StepHeader } from './StepHeader';
 
@@ -38,6 +38,22 @@ export function RequirementsStep({ onNext, onBack, stepNumber, totalSteps }: Req
           <div>
             <p className="font-medium text-white">Um número de telefone dedicado</p>
             <p className="text-sm text-zinc-400">Celular ou fixo, que possa receber SMS ou ligação</p>
+          </div>
+        </div>
+      </div>
+
+      {/* O que NÃO precisa */}
+      <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+        <div className="flex items-start gap-3">
+          <Info className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium text-blue-200 mb-2">O que você NÃO precisa agora:</p>
+            <ul className="text-sm text-blue-200/80 space-y-1">
+              <li>• <strong>Verificar empresa</strong> — pode começar sem verificação (limite de 250 contatos/dia)</li>
+              <li>• <strong>CNPJ ou documentos</strong> — só se quiser verificar depois para escalar</li>
+              <li>• <strong>Comprar número virtual</strong> — seu número pessoal ou fixo funciona</li>
+              <li className="text-blue-200/60 text-xs pl-4">💡 Se precisar de um número dedicado, pesquise por "número virtual WhatsApp Business"</li>
+            </ul>
           </div>
         </div>
       </div>

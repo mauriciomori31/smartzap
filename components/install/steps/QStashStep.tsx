@@ -107,6 +107,16 @@ export function QStashStep({ onComplete }: QStashStepProps) {
           Token do Upstash QStash
         </p>
 
+        {/* Instruções */}
+        <div className="w-full mt-4 p-3 rounded-lg bg-zinc-800/50 text-left space-y-2">
+          <p className="text-xs text-zinc-400 font-medium">Como obter:</p>
+          <ol className="text-xs text-zinc-500 space-y-1 list-decimal list-inside">
+            <li>Crie uma conta gratuita no <a href="https://console.upstash.com" target="_blank" rel="noopener noreferrer" className="text-orange-400 hover:underline">Upstash</a></li>
+            <li>Clique em <strong className="text-zinc-300">QStash</strong> no menu lateral</li>
+            <li>Copie o <strong className="text-zinc-300">QSTASH_TOKEN</strong> na aba Details</li>
+          </ol>
+        </div>
+
         {/* Token Input */}
         <div className="w-full mt-6">
           <TokenInput

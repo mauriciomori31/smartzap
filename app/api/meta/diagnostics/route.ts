@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getWhatsAppCredentials, getCredentialsSource } from '@/lib/whatsapp-credentials'
+import { getWhatsAppCredentials } from '@/lib/whatsapp-credentials'
 import { normalizeSubscribedFields, type MetaSubscribedApp } from '@/lib/meta-webhook-subscription'
 import { getVerifyToken } from '@/lib/verify-token'
 import { supabase } from '@/lib/supabase'
@@ -687,8 +687,8 @@ export async function GET() {
 	const { webhookUrl, vercelEnv } = computeWebhookUrl()
 	const webhookToken = await getVerifyToken().catch(() => null)
 
-	const source = await getCredentialsSource().catch(() => 'none' as const)
 	const credentials = await getWhatsAppCredentials().catch(() => null)
+	const source = credentials ? 'db' : 'none'
 
 	const checks: DiagnosticCheck[] = []
 
@@ -807,12 +807,9 @@ export async function GET() {
 	let debugTokenError: any = null
 	let tokenExpirySummary: TokenExpirySummary | null = null
 
-	// 2a) debug_token (opcional, depende de APP_ID/APP_SECRET)
+	// 2a) debug_token (opcional, depende de APP_ID/APP_SECRET configurados no banco)
 	const appCreds = await getMetaAppCredentials()
-	const metaAppSource = (appCreds?.source || (process.env.META_APP_ID || process.env.META_APP_SECRET ? 'env' : 'none')) as
-		| 'db'
-		| 'env'
-		| 'none'
+	const metaAppSource: 'db' | 'none' = appCreds ? 'db' : 'none'
 	const appId = (appCreds?.appId || '').trim()
 	const appSecret = (appCreds?.appSecret || '').trim()
 	if (appId && appSecret) {

@@ -50,7 +50,6 @@ export const revalidate = 0
 // === TYPES ===
 
 interface CredentialsData {
-  source: 'db' | 'env_fallback' | 'db_error' | 'none'
   phoneNumberId?: string
   businessAccountId?: string
   displayPhoneNumber?: string
@@ -128,64 +127,54 @@ function parseJsonSetting<T>(value: string | null, fallback: T): T {
 
 async function fetchCredentials(): Promise<CredentialsData> {
   if (!isSupabaseConfigured()) {
-    return { source: 'none', isConnected: false, warning: 'Supabase não configurado' }
+    return { isConnected: false, warning: 'Supabase não configurado' }
   }
 
   let dbSettings = { phoneNumberId: '', businessAccountId: '', accessToken: '', isConnected: false }
-  let dbErrorMsg: string | null = null
 
   try {
     dbSettings = await settingsDb.getAll()
-  } catch (err: any) {
-    dbErrorMsg = String(err?.message || err)
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    return { isConnected: false, warning: `Falha ao ler credenciais do DB: ${errorMsg}` }
   }
 
-  let phoneNumberId = dbSettings.phoneNumberId
-  let businessAccountId = dbSettings.businessAccountId
-  let accessToken = dbSettings.accessToken
-  let source: 'db' | 'env_fallback' | 'db_error' = dbErrorMsg ? 'db_error' : 'db'
+  const { phoneNumberId, businessAccountId, accessToken, isConnected } = dbSettings
 
-  if (!phoneNumberId || !businessAccountId || !accessToken) {
-    phoneNumberId = phoneNumberId || process.env.WHATSAPP_PHONE_ID || ''
-    businessAccountId = businessAccountId || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || ''
-    accessToken = accessToken || process.env.WHATSAPP_TOKEN || ''
-    source = dbErrorMsg ? 'db_error' : 'env_fallback'
+  // Se não tem credenciais ou está desconectado
+  if (!phoneNumberId || !businessAccountId || !accessToken || !isConnected) {
+    return { isConnected: false }
   }
 
-  if (phoneNumberId && businessAccountId && accessToken) {
-    let displayPhoneNumber: string | undefined
-    let verifiedName: string | undefined
+  // Buscar informações adicionais da Meta API
+  let displayPhoneNumber: string | undefined
+  let verifiedName: string | undefined
 
-    try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 2500)
-      const metaResponse = await fetch(
-        `https://graph.facebook.com/v24.0/${phoneNumberId}?fields=display_phone_number,verified_name`,
-        { headers: { 'Authorization': `Bearer ${accessToken}` }, signal: controller.signal }
-      )
-      clearTimeout(timeout)
-      if (metaResponse.ok) {
-        const metaData = await metaResponse.json()
-        displayPhoneNumber = metaData.display_phone_number
-        verifiedName = metaData.verified_name
-      }
-    } catch {
-      // Ignore - just won't have display number
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 2500)
+    const metaResponse = await fetch(
+      `https://graph.facebook.com/v24.0/${phoneNumberId}?fields=display_phone_number,verified_name`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` }, signal: controller.signal }
+    )
+    clearTimeout(timeout)
+    if (metaResponse.ok) {
+      const metaData = await metaResponse.json()
+      displayPhoneNumber = metaData.display_phone_number
+      verifiedName = metaData.verified_name
     }
-
-    return {
-      source,
-      phoneNumberId,
-      businessAccountId,
-      displayPhoneNumber,
-      verifiedName,
-      hasToken: true,
-      isConnected: true,
-      ...(dbErrorMsg ? { warning: `Falha ao ler credenciais do DB: ${dbErrorMsg}` } : {}),
-    }
+  } catch {
+    // Ignore - just won't have display number
   }
 
-  return { source: dbErrorMsg ? 'db_error' : 'none', isConnected: false, ...(dbErrorMsg ? { warning: dbErrorMsg } : {}) }
+  return {
+    phoneNumberId,
+    businessAccountId,
+    displayPhoneNumber,
+    verifiedName,
+    hasToken: true,
+    isConnected: true,
+  }
 }
 
 async function fetchAISettings(): Promise<AISettingsData> {

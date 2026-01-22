@@ -45,22 +45,34 @@ export function CreateAppStep({ onNext, onBack, stepNumber, totalSteps }: Create
 
         <div className="flex items-start gap-3 p-3 rounded-lg bg-zinc-800/50">
           <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-sm font-medium flex-shrink-0">4</span>
-          <p className="text-zinc-300">
-            Escolha <strong className="text-white">"Outro"</strong> → <strong className="text-white">"Business"</strong>
-          </p>
+          <div className="text-zinc-300">
+            <p>Em "Casos de uso", selecione <strong className="text-white">"Outro"</strong></p>
+            <p className="text-zinc-500 text-sm mt-1">(aparece como "Outro - Esta opção vai desaparecer em breve")</p>
+          </div>
         </div>
 
         <div className="flex items-start gap-3 p-3 rounded-lg bg-zinc-800/50">
           <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-sm font-medium flex-shrink-0">5</span>
-          <p className="text-zinc-300">
-            Dê um nome (ex: <strong className="text-white">"Minha Empresa WhatsApp"</strong>)
-          </p>
+          <div className="text-zinc-300">
+            <p>Na próxima tela, escolha o tipo <strong className="text-white">"Empresa"</strong></p>
+            <p className="text-zinc-500 text-sm mt-1">Isso habilitará o produto WhatsApp Business</p>
+          </div>
         </div>
 
         <div className="flex items-start gap-3 p-3 rounded-lg bg-zinc-800/50">
           <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-sm font-medium flex-shrink-0">6</span>
+          <div className="text-zinc-300">
+            <p>Dê um nome (ex: <strong className="text-white">"Minha Empresa WhatsApp"</strong>) e informe seu email</p>
+            <p className="text-zinc-500 text-sm mt-1">
+              💡 O campo "Portfólio empresarial" é opcional — será criado automaticamente se você não tiver um
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-zinc-800/50">
+          <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-sm font-medium flex-shrink-0">7</span>
           <p className="text-zinc-300">
-            Clique em <strong className="text-white">"Criar App"</strong>
+            Clique em <strong className="text-white">"Criar app"</strong> para finalizar
           </p>
         </div>
       </div>

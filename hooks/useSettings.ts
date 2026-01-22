@@ -504,10 +504,38 @@ export const useSettingsController = () => {
     }
   };
 
-  const handleDisconnect = () => {
-    const newSettings = { ...formSettings, isConnected: false };
-    saveMutation.mutate(newSettings);
-    setAccountHealth(null);
+  const handleDisconnect = async () => {
+    try {
+      // Chama DELETE /api/settings/credentials para limpar no banco
+      const response = await fetch('/api/settings/credentials', {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Falha ao desconectar');
+      }
+
+      // Limpa estado local
+      setFormSettings({
+        phoneNumberId: '',
+        businessAccountId: '',
+        accessToken: '',
+        isConnected: false,
+      });
+      setAccountHealth(null);
+
+      // Invalida caches para forçar refetch
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      queryClient.invalidateQueries({ queryKey: ['allSettings'] });
+      queryClient.invalidateQueries({ queryKey: ['webhookInfo'] });
+      queryClient.invalidateQueries({ queryKey: ['phoneNumbers'] });
+      queryClient.invalidateQueries({ queryKey: ['metaWebhookSubscription'] });
+
+      toast.success('WhatsApp desconectado com sucesso!');
+    } catch (error) {
+      toast.error('Erro ao desconectar. Tente novamente.');
+      console.error('Disconnect error:', error);
+    }
   };
 
   // Direct save settings (for test contact, etc.)

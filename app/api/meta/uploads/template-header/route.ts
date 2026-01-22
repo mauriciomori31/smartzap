@@ -76,12 +76,12 @@ export async function POST(request: NextRequest) {
     const auth = await requireSessionOrApiKey(request)
     if (auth) return auth
 
-    const metaApp = await getMetaAppId()
-    if (!metaApp?.appId) {
+    const metaAppId = await getMetaAppId()
+    if (!metaAppId) {
       return jsonNoStore(
         {
           error:
-            'Meta App não configurado. Defina META_APP_ID (ou settings.metaAppId) para habilitar uploads via Resumable Upload API.',
+            'Meta App não configurado. Configure metaAppId nas settings para habilitar uploads via Resumable Upload API.',
         },
         { status: 400 }
       )
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
 
     // Step 1: start session
     const fileName = file.name || `template_header_${Date.now()}`
-    const startUrl = new URL(`https://graph.facebook.com/v24.0/${encodeURIComponent(metaApp.appId)}/uploads`)
+    const startUrl = new URL(`https://graph.facebook.com/v24.0/${encodeURIComponent(metaAppId)}/uploads`)
     startUrl.searchParams.set('file_name', fileName)
     startUrl.searchParams.set('file_length', String(file.size))
     startUrl.searchParams.set('file_type', mimeType)

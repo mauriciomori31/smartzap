@@ -17,6 +17,8 @@ import { CreateAppStep } from './steps/CreateAppStep';
 import { AddWhatsAppStep } from './steps/AddWhatsAppStep';
 import { CredentialsStep } from './steps/CredentialsStep';
 import { TestConnectionStep } from './steps/TestConnectionStep';
+import { ConfigureWebhookStep } from './steps/ConfigureWebhookStep';
+import { CreatePermanentTokenStep } from './steps/CreatePermanentTokenStep';
 import { DirectCredentialsStep } from './steps/DirectCredentialsStep';
 
 interface OnboardingModalProps {
@@ -39,6 +41,7 @@ export function OnboardingModal({ isConnected, onComplete }: OnboardingModalProp
     nextStep,
     previousStep,
     completeOnboarding,
+    updateChecklistItem,
   } = useOnboardingProgress();
 
   // Não mostra se já conectado ou se onboarding já foi completado
@@ -111,8 +114,43 @@ export function OnboardingModal({ isConnected, onComplete }: OnboardingModalProp
         return (
           <TestConnectionStep
             credentials={credentials}
-            onComplete={handleComplete}
+            onComplete={async () => {
+              // Salva as credenciais e avança para o próximo step (webhook)
+              await onComplete(credentials);
+              nextStep();
+            }}
             onBack={previousStep}
+            stepNumber={currentStepNumber}
+            totalSteps={totalSteps}
+          />
+        );
+
+      case 'configure-webhook':
+        return (
+          <ConfigureWebhookStep
+            onNext={nextStep}
+            onBack={previousStep}
+            stepNumber={currentStepNumber}
+            totalSteps={totalSteps}
+            onWebhookValidated={() => updateChecklistItem('webhook', true)}
+          />
+        );
+
+      case 'create-permanent-token':
+        return (
+          <CreatePermanentTokenStep
+            currentToken={credentials.accessToken}
+            onTokenUpdate={async (newToken) => {
+              // Atualiza o token nas credenciais locais
+              setCredentials(prev => ({ ...prev, accessToken: newToken }));
+              // Salva no backend
+              await onComplete({ ...credentials, accessToken: newToken });
+              // Marca no checklist
+              updateChecklistItem('permanentToken', true);
+            }}
+            onNext={completeOnboarding}
+            onBack={previousStep}
+            onSkip={completeOnboarding}
             stepNumber={currentStepNumber}
             totalSteps={totalSteps}
           />
@@ -139,6 +177,7 @@ export function OnboardingModal({ isConnected, onComplete }: OnboardingModalProp
     <Dialog open={true}>
       <DialogContent
         className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto"
+        overlayClassName="bg-black/80 backdrop-blur-sm"
         showCloseButton={false}
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}

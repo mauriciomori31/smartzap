@@ -6,29 +6,20 @@ import { fetchWithTimeout, safeJson, isAbortError } from '@/lib/server-http'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-// Credentials are stored in Supabase settings table
-// Environment variables are used as fallback (read-only)
+// Credenciais armazenadas apenas no Supabase settings table
+// Configuradas via UI no onboarding pós-instalação
 
-interface WhatsAppCredentials {
-  phoneNumberId: string
-  businessAccountId: string
-  accessToken: string
-  displayPhoneNumber?: string
-  verifiedName?: string
-}
-
-// GET - Fetch credentials from DB, fallback to Env
+// GET - Fetch credentials from DB only
 export async function GET() {
   try {
     if (!isSupabaseConfigured()) {
       return NextResponse.json({
-        source: 'none',
         isConnected: false,
-        warning: 'Supabase não configurado (variáveis de ambiente ausentes).',
+        warning: 'Supabase não configurado.',
       })
     }
 
-    // 1. Try to get from DB (sem derrubar a UI em caso de erro)
+    // Buscar do banco de dados
     let dbSettings = {
       phoneNumberId: '',
       businessAccountId: '',
@@ -36,75 +27,62 @@ export async function GET() {
       isConnected: false,
     }
 
-    let dbErrorMsg: string | null = null
     try {
       dbSettings = await settingsDb.getAll()
-    } catch (err: any) {
-      dbErrorMsg = String(err?.message || err)
-    }
-
-    let phoneNumberId = dbSettings.phoneNumberId
-    let businessAccountId = dbSettings.businessAccountId
-    let accessToken = dbSettings.accessToken
-    let source: 'db' | 'env_fallback' | 'db_error' = dbErrorMsg ? 'db_error' : 'db'
-
-    // 2. Fallback to Env if missing in DB
-    if (!phoneNumberId || !businessAccountId || !accessToken) {
-      phoneNumberId = phoneNumberId || process.env.WHATSAPP_PHONE_ID || ''
-      businessAccountId = businessAccountId || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || ''
-      accessToken = accessToken || process.env.WHATSAPP_TOKEN || ''
-      source = dbErrorMsg ? 'db_error' : 'env_fallback'
-    }
-
-    if (phoneNumberId && businessAccountId && accessToken) {
-      // Fetch display phone number from Meta API
-      let displayPhoneNumber: string | undefined
-      let verifiedName: string | undefined
-
-      try {
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), 2500)
-        const metaResponse = await fetch(
-          `https://graph.facebook.com/v24.0/${phoneNumberId}?fields=display_phone_number,verified_name`,
-          { headers: { 'Authorization': `Bearer ${accessToken}` }, signal: controller.signal }
-        )
-        clearTimeout(timeout)
-        if (metaResponse.ok) {
-          const metaData = await metaResponse.json()
-          displayPhoneNumber = metaData.display_phone_number
-          verifiedName = metaData.verified_name
-        }
-      } catch {
-        // Ignore errors, just won't have display number
-      }
-
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      console.error('Error fetching settings from DB:', errorMsg)
       return NextResponse.json({
-        source,
-        phoneNumberId,
-        businessAccountId,
-        displayPhoneNumber,
-        verifiedName,
-        hasToken: true,
-        tokenPreview: '••••••••••',
-        isConnected: true,
-        ...(dbErrorMsg ? { warning: `Falha ao ler credenciais do DB: ${dbErrorMsg}` } : {}),
+        isConnected: false,
+        warning: `Falha ao ler credenciais do DB: ${errorMsg}`,
       })
     }
 
-    // Not configured
+    const { phoneNumberId, businessAccountId, accessToken, isConnected } = dbSettings
+
+    // Se não tem credenciais ou está desconectado
+    if (!phoneNumberId || !businessAccountId || !accessToken || !isConnected) {
+      return NextResponse.json({
+        isConnected: false,
+      })
+    }
+
+    // Buscar informações adicionais da Meta API
+    let displayPhoneNumber: string | undefined
+    let verifiedName: string | undefined
+
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 2500)
+      const metaResponse = await fetch(
+        `https://graph.facebook.com/v24.0/${phoneNumberId}?fields=display_phone_number,verified_name`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` }, signal: controller.signal }
+      )
+      clearTimeout(timeout)
+      if (metaResponse.ok) {
+        const metaData = await metaResponse.json()
+        displayPhoneNumber = metaData.display_phone_number
+        verifiedName = metaData.verified_name
+      }
+    } catch {
+      // Ignore errors, just won't have display number
+    }
+
     return NextResponse.json({
-      source: dbErrorMsg ? 'db_error' : 'none',
-      isConnected: false,
-      ...(dbErrorMsg ? { warning: `Falha ao ler credenciais do DB: ${dbErrorMsg}` } : {}),
+      phoneNumberId,
+      businessAccountId,
+      displayPhoneNumber,
+      verifiedName,
+      hasToken: true,
+      tokenPreview: '••••••••••',
+      isConnected: true,
     })
   } catch (error) {
     console.error('Error fetching credentials:', error)
-    // Evita 500 para não causar cascata de retries/lentidão no frontend.
     return NextResponse.json({
-      source: 'none',
       isConnected: false,
       error: 'Failed to fetch credentials',
-      details: String((error as any)?.message || error),
+      details: String((error as Error)?.message || error),
     })
   }
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { StepCard } from '../StepCard';
 import { ServiceIcon } from '../ServiceIcon';
 import { TokenInput } from '../TokenInput';
@@ -122,16 +122,21 @@ export function VercelStep({ onComplete }: VercelStepProps) {
           />
         </div>
 
-        {/* Help link */}
-        <a
-          href="https://vercel.com/account/tokens"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-6 inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-emerald-400 transition-colors"
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          Onde encontrar meu token?
-        </a>
+        {/* Collapsible help */}
+        <details className="w-full mt-6 group">
+          <summary className="flex items-center justify-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-300 cursor-pointer list-none transition-colors">
+            <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" />
+            Como criar o token?
+          </summary>
+          <div className="mt-3 p-3 rounded-lg bg-zinc-800/50 text-left space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+            <ol className="text-xs text-zinc-400 space-y-1.5 list-decimal list-inside">
+              <li>Acesse <a href="https://vercel.com/account/tokens" target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline">vercel.com/account/tokens</a></li>
+              <li>Clique em <strong className="text-zinc-300">Create</strong></li>
+              <li>Nome: <strong className="text-zinc-300">smartzap</strong> • Scope: <strong className="text-zinc-300">Full Account</strong></li>
+              <li>Copie e cole o token acima</li>
+            </ol>
+          </div>
+        </details>
       </div>
     </StepCard>
   );
