@@ -154,13 +154,20 @@ export async function processInboxAIWorkflow(context: WorkflowContext) {
     const { messages: messagesData } = await inboxDb.listMessages(conversationId, { limit: 20 })
     console.log(`📦 [FETCH] Found ${messagesData.length} messages`)
 
+    // Serializa os dados para evitar problemas com objetos complexos do Supabase
+    // O Upstash Workflow precisa serializar/deserializar o retorno do context.run
     console.log(`✅ [FETCH] All data fetched successfully!`)
-    return {
+    console.log(`📦 [FETCH] Serializing response...`)
+
+    const serializedResult = {
       valid: true as const,
-      conversation: conversationData,
-      agent: agentData,
-      messages: messagesData,
+      conversation: JSON.parse(JSON.stringify(conversationData)),
+      agent: JSON.parse(JSON.stringify(agentData)),
+      messages: JSON.parse(JSON.stringify(messagesData)),
     }
+
+    console.log(`📦 [FETCH] Serialization complete!`)
+    return serializedResult
   })
 
   console.log(`📦 [WORKFLOW] Step 2 result: valid=${fetchResult.valid}`)
