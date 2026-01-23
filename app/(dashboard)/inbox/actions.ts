@@ -1,5 +1,6 @@
 'use server'
 
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase-server'
 import type { InboxConversation, InboxLabel, InboxQuickReply } from '@/types'
 
@@ -13,8 +14,9 @@ export interface InboxInitialData {
 /**
  * Busca dados iniciais do inbox no servidor (RSC).
  * Carrega conversas, labels e quick replies em paralelo.
+ * Usa cache() para deduplicação per-request.
  */
-export async function getInboxInitialData(): Promise<InboxInitialData> {
+export const getInboxInitialData = cache(async (): Promise<InboxInitialData> => {
   const supabase = await createClient()
 
   // Buscar tudo em paralelo
@@ -62,4 +64,4 @@ export async function getInboxInitialData(): Promise<InboxInitialData> {
     quickReplies: (quickRepliesResult.data || []) as InboxQuickReply[],
     totalUnread
   }
-}
+})

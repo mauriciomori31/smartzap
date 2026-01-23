@@ -31,35 +31,24 @@ export async function GET(request: Request, { params }: Params) {
     const includeReadRaw = searchParams.get('includeRead')
     const includeRead = includeReadRaw === '1' || includeReadRaw === 'true'
 
-    // 1. Get aggregated stats (parallel queries)
-    const [
-      { count: total },
-      { count: pending },
-      { count: sent },
-      { count: delivered },
-      { count: read },
-      { count: skipped },
-      { count: failed }
-    ] = await Promise.all([
-      supabase.from('campaign_contacts').select('*', { count: 'exact', head: true }).eq('campaign_id', id),
-      supabase.from('campaign_contacts').select('*', { count: 'exact', head: true }).eq('campaign_id', id).in('status', ['pending', 'sending']),
-      // "Enviado" (sent) deve incluir entregues e lidas para manter a progressão: sent >= delivered >= read
-      supabase.from('campaign_contacts').select('*', { count: 'exact', head: true }).eq('campaign_id', id).in('status', ['sent', 'delivered', 'read']),
-      // Delivered inclui delivered + read
-      supabase.from('campaign_contacts').select('*', { count: 'exact', head: true }).eq('campaign_id', id).in('status', ['delivered', 'read']),
-      supabase.from('campaign_contacts').select('*', { count: 'exact', head: true }).eq('campaign_id', id).eq('status', 'read'),
-      supabase.from('campaign_contacts').select('*', { count: 'exact', head: true }).eq('campaign_id', id).eq('status', 'skipped'),
-      supabase.from('campaign_contacts').select('*', { count: 'exact', head: true }).eq('campaign_id', id).eq('status', 'failed')
-    ])
+    // 1. Get aggregated stats (single RPC call instead of 7 queries)
+    const { data: statsData, error: statsError } = await supabase.rpc('get_campaign_contact_stats', {
+      p_campaign_id: id
+    })
+
+    if (statsError) {
+      console.error('Failed to get campaign stats:', statsError)
+      throw statsError
+    }
 
     const aggregatedStats = {
-      total: total || 0,
-      pending: pending || 0,
-      sent: sent || 0,
-      delivered: delivered || 0,
-      read: read || 0,
-      skipped: skipped || 0,
-      failed: failed || 0,
+      total: statsData?.total || 0,
+      pending: statsData?.pending || 0,
+      sent: statsData?.sent || 0,
+      delivered: statsData?.delivered || 0,
+      read: statsData?.read || 0,
+      skipped: statsData?.skipped || 0,
+      failed: statsData?.failed || 0,
     }
 
     // 2. Get paginated messages

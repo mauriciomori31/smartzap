@@ -227,14 +227,14 @@ export function ActionGrid({
     }
   }, [isNewlyCreated, isTouch]);
 
-  const filteredActions = actions.filter((action) => {
+  const filteredActions = useMemo(() => {
     const searchTerm = filter.toLowerCase();
-    return (
+    return actions.filter((action) =>
       action.label.toLowerCase().includes(searchTerm) ||
       action.description.toLowerCase().includes(searchTerm) ||
       action.category.toLowerCase().includes(searchTerm)
     );
-  });
+  }, [actions, filter]);
 
   // Group actions by category
   const groupedActions = useMemo(() => {

@@ -118,32 +118,27 @@ export const campaignDb = {
         const folderId = params.folderId ?? null
         const tagIds = params.tagIds ?? null
 
-        // Se filtrar por tags, precisamos buscar os campaign_ids que têm TODAS as tags
+        // Se filtrar por tags, usamos RPC para buscar em uma única query (evita N+1)
         let campaignIdsWithTags: string[] | null = null
         if (tagIds && tagIds.length > 0) {
-            // Para cada tag, busca os campaign_ids que a possuem
-            const tagResults = await Promise.all(
-                tagIds.map(async (tagId) => {
-                    const { data } = await supabase
-                        .from('campaign_tag_assignments')
-                        .select('campaign_id')
-                        .eq('tag_id', tagId)
-                    return new Set((data || []).map((r: any) => r.campaign_id))
-                })
+            const { data: campaignIds, error: tagError } = await supabase.rpc(
+                'get_campaigns_with_all_tags',
+                { p_tag_ids: tagIds }
             )
 
-            // Interseção: campanhas que têm TODAS as tags selecionadas
-            campaignIdsWithTags = Array.from(
-                tagResults.reduce((acc, set) => {
-                    if (acc === null) return set
-                    return new Set([...acc].filter(id => set.has(id)))
-                }, null as Set<string> | null) || new Set()
-            )
+            if (tagError) {
+                console.error('Failed to get campaigns by tags:', tagError)
+                throw tagError
+            }
+
+            const resolvedIds: string[] = campaignIds || []
 
             // Se não houver campanhas com todas as tags, retorna vazio
-            if (campaignIdsWithTags.length === 0) {
+            if (resolvedIds.length === 0) {
                 return { data: [], total: 0 }
             }
+
+            campaignIdsWithTags = resolvedIds
         }
 
         let query = supabase
@@ -1093,42 +1088,31 @@ export const contactDb = {
     },
 
     getTags: async (): Promise<string[]> => {
-        const { data, error } = await supabase
-            .from('contacts')
-            .select('tags')
-            .not('tags', 'is', null)
+        // Usa RPC para extrair tags únicas diretamente no SQL (evita carregar todos contatos)
+        const { data, error } = await supabase.rpc('get_contact_tags')
 
-        if (error) throw error
+        if (error) {
+            console.error('Failed to get contact tags:', error)
+            throw error
+        }
 
-        const tagSet = new Set<string>()
-            ; (data || []).forEach(row => {
-                if (Array.isArray(row.tags)) {
-                    row.tags.forEach((tag: string) => tagSet.add(tag))
-                }
-            })
-
-        return Array.from(tagSet).sort()
+        return Array.isArray(data) ? data : []
     },
 
     getStats: async () => {
-        const { data, error } = await supabase
-            .from('contacts')
-            .select('status')
+        // Usa RPC para contar no SQL (evita carregar todos contatos em memória)
+        const { data, error } = await supabase.rpc('get_contact_stats')
 
-        if (error) throw error
-
-        const stats = {
-            total: data?.length || 0,
-            optIn: 0,
-            optOut: 0,
+        if (error) {
+            console.error('Failed to get contact stats:', error)
+            throw error
         }
 
-            ; (data || []).forEach(row => {
-                if (row.status === 'Opt-in') stats.optIn++
-                else if (row.status === 'Opt-out') stats.optOut++
-            })
-
-        return stats
+        return {
+            total: data?.total || 0,
+            optIn: data?.optIn || 0,
+            optOut: data?.optOut || 0,
+        }
     },
 }
 

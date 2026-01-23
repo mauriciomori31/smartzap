@@ -1,5 +1,6 @@
 'use server'
 
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase-server'
 import type { Campaign, CampaignFolder, CampaignTag } from '@/types'
 import type { CampaignListResult } from '@/services/campaignService'
@@ -9,11 +10,12 @@ const PAGE_SIZE = 20
 /**
  * Busca dados iniciais de campanhas no servidor (RSC).
  * Retorna primeira página com folders e tags para filtros.
+ * Usa cache() para deduplicação per-request.
  */
-export async function getCampaignsInitialData(): Promise<CampaignListResult & {
+export const getCampaignsInitialData = cache(async (): Promise<CampaignListResult & {
   folders: CampaignFolder[]
   tags: CampaignTag[]
-}> {
+}> => {
   const supabase = await createClient()
 
   // Buscar campanhas (com folder e tags), folders e tags em PARALELO
@@ -82,4 +84,4 @@ export async function getCampaignsInitialData(): Promise<CampaignListResult & {
     folders: (foldersResult.data || []) as CampaignFolder[],
     tags: (tagsResult.data || []) as CampaignTag[]
   }
-}
+})

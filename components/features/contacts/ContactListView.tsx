@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { Trash2, UploadCloud, Download, FileText, Plus } from 'lucide-react';
 import { Contact, ContactStatus, CustomFieldDefinition } from '../../../types';
 import { CustomFieldsSheet } from './CustomFieldsSheet';
@@ -19,8 +20,13 @@ import {
   ContactAddModal,
   ContactEditModal,
   ContactDeleteModal,
-  ContactImportModal,
 } from './list';
+
+// Lazy-load ContactImportModal (raramente usado, pesado)
+const ContactImportModal = dynamic(
+  () => import('./list').then((m) => ({ default: m.ContactImportModal })),
+  { loading: () => null }
+);
 
 // Import types
 import type {

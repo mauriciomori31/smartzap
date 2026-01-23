@@ -167,14 +167,17 @@ export async function GET(request: NextRequest) {
 
     const params = request.nextUrl.searchParams
     const limit = clampInt(params.get('limit'), 1, 500, 200)
-    const storedConfig = await getCalendarConfig()
+
+    // Buscar configs em paralelo para reduzir latência
+    const [storedConfig, bookingConfig] = await Promise.all([
+      getCalendarConfig(),
+      getCalendarBookingConfig(),
+    ])
 
     const calendarId = params.get('calendarId') || storedConfig?.calendarId
     if (!calendarId) {
       return NextResponse.json({ error: 'calendarId ausente' }, { status: 400 })
     }
-
-    const bookingConfig = await getCalendarBookingConfig()
     const timeZone = bookingConfig.timezone || storedConfig?.calendarTimeZone || DEFAULT_CONFIG.timezone
 
     const now = new Date()

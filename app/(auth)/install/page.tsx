@@ -5,12 +5,12 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 
 // Storage keys matching /install/start
+// Nota: QSTASH_SIGNING_KEY foi removido pois não é coletado pelo wizard
 const STORAGE_KEYS = {
   VERCEL_TOKEN: 'smartzap_install_vercel_token',
   VERCEL_PROJECT: 'smartzap_install_vercel_project',
   SUPABASE_PAT: 'smartzap_install_supabase_pat',
   QSTASH_TOKEN: 'smartzap_install_qstash_token',
-  QSTASH_SIGNING_KEY: 'smartzap_install_qstash_signing_key',
   REDIS_REST_URL: 'smartzap_install_redis_url',
   REDIS_REST_TOKEN: 'smartzap_install_redis_token',
 } as const;
@@ -32,7 +32,6 @@ export default function InstallRouterPage() {
       localStorage.getItem(STORAGE_KEYS.VERCEL_PROJECT) &&
       localStorage.getItem(STORAGE_KEYS.SUPABASE_PAT) &&
       localStorage.getItem(STORAGE_KEYS.QSTASH_TOKEN) &&
-      localStorage.getItem(STORAGE_KEYS.QSTASH_SIGNING_KEY) &&
       localStorage.getItem(STORAGE_KEYS.REDIS_REST_URL) &&
       localStorage.getItem(STORAGE_KEYS.REDIS_REST_TOKEN);
 

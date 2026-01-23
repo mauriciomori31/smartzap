@@ -45,13 +45,24 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   // 1) Prefer métricas persistidas (run/batch) quando existir
   try {
-    const { data: run, error: runErr } = await supabase
-      .from('campaign_run_metrics')
-      .select('*')
-      .eq('campaign_id', id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    // Executar queries em paralelo para reduzir latência
+    const [runResult, baselineResult] = await Promise.all([
+      supabase
+        .from('campaign_run_metrics')
+        .select('*')
+        .eq('campaign_id', id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('campaign_run_metrics')
+        .select('campaign_id, created_at, template_name, recipients, sent_total, failed_total, skipped_total, dispatch_duration_ms, throughput_mps, meta_avg_ms, db_avg_ms, saw_throughput_429, config_hash, config')
+        .order('created_at', { ascending: false })
+        .limit(30),
+    ])
+
+    const { data: run, error: runErr } = runResult
+    const { data: baseline, error: baselineErr } = baselineResult
 
     const runTableMissing = !!runErr && isMissingTableError(runErr)
     const runHadError = !!runErr && !runTableMissing
@@ -60,12 +71,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       // Erros não-esperados
       console.warn('[metrics] run query error', runErr)
     }
-
-    const { data: baseline, error: baselineErr } = await supabase
-      .from('campaign_run_metrics')
-      .select('campaign_id, created_at, template_name, recipients, sent_total, failed_total, skipped_total, dispatch_duration_ms, throughput_mps, meta_avg_ms, db_avg_ms, saw_throughput_429, config_hash, config')
-      .order('created_at', { ascending: false })
-      .limit(30)
 
     const baselineTableMissing = !!baselineErr && isMissingTableError(baselineErr)
     const baselineHadError = !!baselineErr && !baselineTableMissing

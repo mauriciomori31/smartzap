@@ -36,7 +36,7 @@ export function useQuickReplies(options: UseQuickRepliesOptions = {}) {
     onSuccess: (newQuickReply) => {
       queryClient.setQueryData<InboxQuickReply[]>(QUICK_REPLIES_KEY, (old) =>
         old
-          ? [...old, newQuickReply].sort((a, b) => a.title.localeCompare(b.title))
+          ? [...old, newQuickReply].toSorted((a, b) => a.title.localeCompare(b.title))
           : [newQuickReply]
       )
     },

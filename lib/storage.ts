@@ -288,7 +288,7 @@ export const storage = {
       const contacts = get<Contact[]>(KEYS.CONTACTS, []);
       const tagSet = new Set<string>();
       contacts.forEach(c => c.tags.forEach(t => tagSet.add(t)));
-      return Array.from(tagSet).sort();
+      return Array.from(tagSet).toSorted();
     },
 
     getStats: () => {

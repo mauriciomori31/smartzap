@@ -1,5 +1,6 @@
 'use server'
 
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase-server'
 import type { DashboardStats, ChartDataPoint } from '@/services/dashboardService'
 import type { Campaign } from '@/types'
@@ -7,11 +8,12 @@ import type { Campaign } from '@/types'
 /**
  * Busca dados do dashboard no servidor (RSC).
  * Executa queries em paralelo para stats e campanhas recentes.
+ * Usa cache() para deduplicação per-request (evita queries duplicadas no mesmo render).
  */
-export async function getDashboardData(): Promise<{
+export const getDashboardData = cache(async (): Promise<{
   stats: DashboardStats
   recentCampaigns: Campaign[]
-}> {
+}> => {
   const supabase = await createClient()
 
   // Buscar stats agregados e campanhas recentes em PARALELO
@@ -72,7 +74,7 @@ export async function getDashboardData(): Promise<{
     },
     recentCampaigns
   }
-}
+})
 
 /**
  * Gera dados do gráfico para os últimos 30 dias

@@ -11,9 +11,8 @@
  */
 
 import React, { memo } from 'react'
-import { formatDistanceToNow } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
+import { formatRelativeTime } from '@/lib/date-utils'
 import type { InboxConversation } from '@/types'
 
 export interface ConversationItemProps {
@@ -52,12 +51,7 @@ export const ConversationItem = memo(function ConversationItem({
     .toUpperCase()
 
   // Format time
-  const timeAgo = last_message_at
-    ? formatDistanceToNow(new Date(last_message_at), {
-        addSuffix: true,
-        locale: ptBR,
-      })
-    : ''
+  const timeAgo = formatRelativeTime(last_message_at)
 
   return (
     <button

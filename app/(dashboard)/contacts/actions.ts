@@ -1,5 +1,6 @@
 'use server'
 
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase-server'
 import type { Contact, ContactStatus, CustomFieldDefinition } from '@/types'
 
@@ -20,8 +21,9 @@ export interface ContactsInitialData {
 
 /**
  * Busca dados iniciais de contatos no servidor (RSC).
+ * Usa cache() para deduplicação per-request.
  */
-export async function getContactsInitialData(): Promise<ContactsInitialData> {
+export const getContactsInitialData = cache(async (): Promise<ContactsInitialData> => {
   const supabase = await createClient()
 
   // Buscar tudo em paralelo
@@ -104,7 +106,7 @@ export async function getContactsInitialData(): Promise<ContactsInitialData> {
       optOut: computedStats.optOut,
       suppressed: computedStats.suppressed
     },
-    tags: Array.from(allTags).sort(),
+    tags: Array.from(allTags).toSorted(),
     customFields: (customFieldsResult.data || []) as CustomFieldDefinition[]
   }
-}
+})

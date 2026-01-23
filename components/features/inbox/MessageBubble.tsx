@@ -12,10 +12,9 @@
  */
 
 import React, { memo } from 'react'
-import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
 import { Check, CheckCheck, Clock, AlertCircle, Sparkles, ArrowRightLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { formatTime } from '@/lib/date-utils'
 import {
   Tooltip,
   TooltipContent,
@@ -119,9 +118,7 @@ export const MessageBubble = memo(function MessageBubble({
   const handoffData = parseHandoffMessage(content)
 
   // Format time
-  const time = created_at
-    ? format(new Date(created_at), 'HH:mm', { locale: ptBR })
-    : ''
+  const time = formatTime(created_at)
 
   // Special rendering for handoff messages - system message style
   if (handoffData) {

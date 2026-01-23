@@ -29,7 +29,7 @@ export function useCampaignTags() {
     mutationFn: campaignService.createTag,
     onSuccess: (newTag) => {
       queryClient.setQueryData<CampaignTag[]>(TAGS_KEY, (old) =>
-        old ? [...old, newTag].sort((a, b) => a.name.localeCompare(b.name)) : [newTag]
+        old ? [...old, newTag].toSorted((a, b) => a.name.localeCompare(b.name)) : [newTag]
       )
     },
   })
