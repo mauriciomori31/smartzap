@@ -357,7 +357,7 @@ export const useSettingsController = () => {
       const response = await fetch('/api/meta/webhooks/subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callbackUrl }), // Passa a URL do frontend (ex: ngrok)
+        body: JSON.stringify({ callbackUrl }), // Passa a URL do frontend (ex: URL de túnel em dev)
       });
 
       const data = await response.json().catch(() => ({}));

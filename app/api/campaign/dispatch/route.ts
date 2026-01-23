@@ -42,23 +42,6 @@ function getRequestOrigin(request: NextRequest): string | null {
   return `${proto}://${host}`
 }
 
-const NGROK_API = 'http://127.0.0.1:4040/api'
-
-async function getNgrokPublicUrl(): Promise<string | null> {
-  try {
-    const res = await fetch(`${NGROK_API}/tunnels`, { method: 'GET' })
-    if (!res.ok) return null
-    const data = (await res.json()) as { tunnels?: Array<{ public_url?: string; proto?: string }> }
-    const tunnels = Array.isArray(data?.tunnels) ? data.tunnels : []
-    const https = tunnels.find((t) => String(t?.proto || '').toLowerCase() === 'https' && t.public_url)
-    if (https?.public_url) return https.public_url
-    const any = tunnels.find((t) => t.public_url)
-    return any?.public_url ? String(any.public_url) : null
-  } catch {
-    return null
-  }
-}
-
 function isMissingOnConflictConstraintError(err: any): boolean {
   const msg = String(err?.message || '').toLowerCase()
   // Postgres: "there is no unique or exclusion constraint matching the ON CONFLICT specification"
@@ -908,17 +891,15 @@ export async function POST(request: NextRequest) {
       : null
     const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : null
     const isDev = process.env.NODE_ENV === 'development'
-    const devNgrokUrl = isDev && process.env.QSTASH_TOKEN ? await getNgrokPublicUrl() : null
 
     // Regra de ouro:
     // - preview/dev: sempre preferir o origin do request para garantir que o workflow
     //   rode no MESMO deployment que gerou a fila (evita chamar produção por engano).
     // - produção: pode usar um domínio estável (NEXT_PUBLIC_APP_URL), caso exista.
-    const baseUrl = devNgrokUrl
-      ? devNgrokUrl
-      : (vercelEnv === 'production')
-        ? (explicitAppUrl || productionUrl || vercelUrl || requestOrigin || 'http://localhost:3000')
-        : (requestOrigin || vercelUrl || explicitAppUrl || productionUrl || 'http://localhost:3000')
+    // - dev local com túnel: configure NEXT_PUBLIC_APP_URL com a URL do túnel (ex: Cloudflare Tunnel)
+    const baseUrl = (vercelEnv === 'production')
+      ? (explicitAppUrl || productionUrl || vercelUrl || requestOrigin || 'http://localhost:3000')
+      : (explicitAppUrl || requestOrigin || vercelUrl || productionUrl || 'http://localhost:3000')
 
     const isLocalhost = baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')
 

@@ -56,6 +56,8 @@ export interface UpdateConversationParams {
   priority?: ConversationPriority
   ai_agent_id?: string
   labels?: string[]
+  /** When human mode should auto-expire (ISO string). Set when switching to human mode. */
+  human_mode_expires_at?: string | null
 }
 
 export interface CreateLabelParams {

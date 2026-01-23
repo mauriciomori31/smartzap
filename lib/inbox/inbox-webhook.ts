@@ -8,7 +8,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { normalizePhoneNumber } from '@/lib/phone-formatter'
-import { inboxDb } from './inbox-db'
+import { inboxDb, isHumanModeExpired, switchToBotMode } from './inbox-db'
 import { cancelDebounce } from '@/lib/ai/agents/chat-agent'
 import { sendWhatsAppMessage } from '@/lib/whatsapp-send'
 import { getRedis, REDIS_KEYS } from '@/lib/upstash/redis'
@@ -113,7 +113,18 @@ export async function handleInboundMessage(
 
   // 3. Trigger AI processing if mode is 'bot' and automation is not paused (T066)
   let triggeredAI = false
-  if (conversation.mode === 'bot') {
+  let currentMode = conversation.mode
+
+  // Check if human mode has expired → auto-switch back to bot
+  if (currentMode === 'human' && isHumanModeExpired(conversation.human_mode_expires_at)) {
+    console.log(
+      `[Inbox] Human mode expired for ${conversation.id}, auto-switching to bot mode`
+    )
+    await switchToBotMode(conversation.id)
+    currentMode = 'bot'
+  }
+
+  if (currentMode === 'bot') {
     // T066: Check if automation is paused
     if (isAutomationPaused(conversation.automation_paused_until)) {
       console.log(

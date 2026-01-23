@@ -586,6 +586,7 @@ CREATE TABLE public.inbox_conversations (
     automation_paused_until timestamp with time zone,
     automation_paused_by text,
     handoff_summary text,
+    human_mode_expires_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT chk_inbox_conversations_mode CHECK ((mode = ANY (ARRAY['bot'::text, 'human'::text]))),

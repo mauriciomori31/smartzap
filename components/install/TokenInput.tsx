@@ -131,7 +131,7 @@ export const TokenInput = forwardRef<HTMLInputElement, TokenInputProps>(
           </label>
         )}
 
-        {/* Input container com shake em erro */}
+        {/* Input container com shake em erro + pulse sutil quando vazio */}
         <motion.div
           animate={
             isError
@@ -139,7 +139,21 @@ export const TokenInput = forwardRef<HTMLInputElement, TokenInputProps>(
                   x: [-4, 4, -4, 4, -2, 2, 0],
                   transition: { duration: 0.4 },
                 }
-              : {}
+              : value.length === 0 && !validating && !success
+                ? {
+                    boxShadow: [
+                      '0 0 0 1px currentColor',
+                      '0 0 0 3px currentColor',
+                      '0 0 0 1px currentColor',
+                    ],
+                    opacity: [0.3, 0.6, 0.3],
+                    transition: {
+                      duration: 2,
+                      repeat: Infinity,
+                      ease: 'easeInOut',
+                    },
+                  }
+                : {}
           }
           className={cn(
             'relative flex items-center gap-2',

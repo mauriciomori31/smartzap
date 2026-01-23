@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { StepCard } from './StepCard';
-import type { InstallStep, STEP_META } from '@/lib/installer/types';
+import type { InstallStep } from '@/lib/installer/types';
 
 interface ErrorViewProps {
   error: string;

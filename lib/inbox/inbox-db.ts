@@ -721,6 +721,70 @@ export async function deleteQuickReply(id: string): Promise<void> {
 }
 
 // =============================================================================
+// Human Mode Expiration (Auto-timeout)
+// =============================================================================
+
+/** Default timeout for human mode: 24 hours */
+export const DEFAULT_HUMAN_MODE_TIMEOUT_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Check if human mode has expired for a conversation
+ */
+export function isHumanModeExpired(expiresAt: string | null | undefined): boolean {
+  if (!expiresAt) return false // null = never expires
+  const expiryTime = new Date(expiresAt).getTime()
+  return Date.now() > expiryTime
+}
+
+/**
+ * Switch conversation to human mode with auto-expiration
+ * @param conversationId - The conversation ID
+ * @param timeoutMs - Timeout in milliseconds (default: 24 hours)
+ */
+export async function switchToHumanMode(
+  conversationId: string,
+  timeoutMs: number = DEFAULT_HUMAN_MODE_TIMEOUT_MS
+): Promise<void> {
+  const supabase = getClient()
+  const expiresAt = new Date(Date.now() + timeoutMs).toISOString()
+
+  const { error } = await supabase
+    .from('inbox_conversations')
+    .update({
+      mode: 'human',
+      human_mode_expires_at: expiresAt,
+    })
+    .eq('id', conversationId)
+
+  if (error) {
+    throw new Error(`Failed to switch to human mode: ${error.message}`)
+  }
+
+  console.log(`[Inbox] Switched conversation ${conversationId} to human mode (expires: ${expiresAt})`)
+}
+
+/**
+ * Switch conversation back to bot mode (clear expiration)
+ */
+export async function switchToBotMode(conversationId: string): Promise<void> {
+  const supabase = getClient()
+
+  const { error } = await supabase
+    .from('inbox_conversations')
+    .update({
+      mode: 'bot',
+      human_mode_expires_at: null,
+    })
+    .eq('id', conversationId)
+
+  if (error) {
+    throw new Error(`Failed to switch to bot mode: ${error.message}`)
+  }
+
+  console.log(`[Inbox] Switched conversation ${conversationId} back to bot mode`)
+}
+
+// =============================================================================
 // Exported Object API
 // =============================================================================
 
@@ -739,6 +803,11 @@ export const inboxDb = {
   updateConversation,
   markConversationAsRead,
   incrementUnreadCount,
+
+  // Human Mode Management
+  switchToHumanMode,
+  switchToBotMode,
+  isHumanModeExpired,
 
   // Messages
   listMessages: getMessagesByConversation,

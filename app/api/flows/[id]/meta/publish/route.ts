@@ -52,41 +52,18 @@ const ENDPOINT_URL_SETTING = 'whatsapp_flow_endpoint_url'
 const PUBLIC_KEY_SETTING = 'whatsapp_flow_public_key'
 
 /**
- * Detecta URL do ngrok ativo em dev (consulta API local do ngrok)
- */
-async function getActiveNgrokUrl(): Promise<string | null> {
-  if (process.env.NODE_ENV !== 'development') return null
-  try {
-    const res = await fetch('http://127.0.0.1:4040/api/tunnels', { 
-      method: 'GET',
-      signal: AbortSignal.timeout(1000) // timeout rapido
-    })
-    if (!res.ok) return null
-    const data = await res.json() as { tunnels?: { public_url?: string; config?: { addr?: string } }[] }
-    const tunnel = data?.tunnels?.find(t => 
-      t.config?.addr?.includes(':3000') || t.config?.addr?.includes('localhost')
-    ) || data?.tunnels?.[0]
-    // #region agent log
-    // #endregion
-    return tunnel?.public_url || null
-  } catch {
-    return null
-  }
-}
-
-/**
  * Retorna a URL do endpoint se configurado
- * Prioridade: ngrok ativo (dev) > env vars > stored URL
+ * Prioridade: NEXT_PUBLIC_APP_URL > Vercel env vars > stored URL
+ *
+ * Para dev local, configure NEXT_PUBLIC_APP_URL com sua URL de túnel (ex: Cloudflare Tunnel)
  */
 async function getFlowEndpointUrl(): Promise<string | null> {
   const privateKey = await settingsDb.get('whatsapp_flow_private_key')
   if (!privateKey) return null
 
-  // 1. Em dev, verifica se tem ngrok ativo
-  const ngrokUrl = await getActiveNgrokUrl()
-  if (ngrokUrl) {
-    console.log('[publish] 🚇 Usando ngrok URL:', ngrokUrl)
-    return `${ngrokUrl}/api/flows/endpoint`
+  // 1. NEXT_PUBLIC_APP_URL (pode ser URL de túnel em dev)
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return `${process.env.NEXT_PUBLIC_APP_URL}/api/flows/endpoint`
   }
 
   // 2. Env vars (producao/preview Vercel)
@@ -94,16 +71,12 @@ async function getFlowEndpointUrl(): Promise<string | null> {
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/api/flows/endpoint`
     : process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}/api/flows/endpoint`
-      : process.env.NEXT_PUBLIC_APP_URL
-        ? `${process.env.NEXT_PUBLIC_APP_URL}/api/flows/endpoint`
-        : null
-  
+      : null
+
   // 3. Fallback: URL salva no banco
   const storedEndpointUrl = await settingsDb.get(ENDPOINT_URL_SETTING)
   const resolved = envEndpointUrl || storedEndpointUrl || null
-  // #region agent log
-  // #endregion
-  console.log('[publish] 📍 Endpoint URL resolvida:', resolved, '(ngrok:', ngrokUrl, ', env:', envEndpointUrl, ', stored:', storedEndpointUrl, ')')
+  console.log('[publish] 📍 Endpoint URL resolvida:', resolved, '(env:', envEndpointUrl, ', stored:', storedEndpointUrl, ')')
   return resolved
 }
 

@@ -1,44 +1,112 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { TokenInput } from '../TokenInput';
+import { ValidatingOverlay } from '../ValidatingOverlay';
+import { SuccessCheckmark } from '../SuccessCheckmark';
+import { VALIDATION } from '@/lib/installer/types';
 import type { FormProps } from './types';
 
 /**
- * Form de credenciais Redis simplificado.
- * Coleta REST URL e REST Token do Upstash Redis.
+ * Form de credenciais Redis com comportamento MÁGICO.
+ *
+ * Fluxo especial (2 campos):
+ * 1. Usuário cola REST URL
+ * 2. Usuário cola REST Token
+ * 3. Quando AMBOS válidos, aguarda 800ms
+ * 4. Valida automaticamente via API
+ * 5. Mostra checkmark e auto-avança (inicia provisioning)
  */
 export function RedisForm({ data, onComplete, onBack, showBack }: FormProps) {
   const [restUrl, setRestUrl] = useState(data.redisRestUrl);
   const [restToken, setRestToken] = useState(data.redisRestToken);
+  const [validating, setValidating] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const autoValidateTimer = useRef<NodeJS.Timeout | null>(null);
 
   const isValidUrl = restUrl.trim().startsWith('https://') && restUrl.trim().includes('.upstash.io');
-  const isValidToken = restToken.trim().length >= 30 && /^[A-Za-z0-9_=-]+$/.test(restToken.trim());
-  const canSubmit = isValidUrl && isValidToken;
+  const isValidToken = restToken.trim().length >= VALIDATION.REDIS_TOKEN_MIN_LENGTH && /^[A-Za-z0-9_=-]+$/.test(restToken.trim());
+  const canValidate = isValidUrl && isValidToken;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (canSubmit) {
-      onComplete({
-        redisRestUrl: restUrl.trim(),
-        redisRestToken: restToken.trim(),
+  const handleValidate = async () => {
+    if (!canValidate) {
+      setError('Preencha URL e Token válidos');
+      return;
+    }
+
+    setValidating(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/installer/redis/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restUrl: restUrl.trim(),
+          restToken: restToken.trim(),
+        }),
       });
+
+      const result = await res.json();
+
+      if (!res.ok || result.error) {
+        throw new Error(result.error || 'Credenciais inválidas');
+      }
+
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao validar Redis');
+    } finally {
+      setValidating(false);
     }
   };
 
-  const inputClass = cn(
-    'w-full px-4 py-3 rounded-xl',
-    'bg-zinc-800/50 border border-zinc-700',
-    'text-zinc-100 placeholder:text-zinc-500 font-mono text-sm',
-    'focus:border-red-500 focus:outline-none',
-    'focus:shadow-[0_0_0_3px_theme(colors.red.500/0.15)]',
-    'transition-all duration-200'
-  );
+  const handleSuccessComplete = () => {
+    onComplete({
+      redisRestUrl: restUrl.trim(),
+      redisRestToken: restToken.trim(),
+    });
+  };
+
+  // Auto-validar quando ambos campos estiverem válidos
+  useEffect(() => {
+    if (autoValidateTimer.current) {
+      clearTimeout(autoValidateTimer.current);
+    }
+
+    if (canValidate && !validating && !success && !error) {
+      autoValidateTimer.current = setTimeout(() => {
+        handleValidate();
+      }, 800);
+    }
+
+    return () => {
+      if (autoValidateTimer.current) {
+        clearTimeout(autoValidateTimer.current);
+      }
+    };
+  }, [restUrl, restToken, canValidate, validating, success, error]);
+
+  // Estado de sucesso
+  if (success) {
+    return (
+      <SuccessCheckmark
+        message="Redis conectado! Iniciando instalação..."
+        onComplete={handleSuccessComplete}
+      />
+    );
+  }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <div className="relative space-y-5">
+      <ValidatingOverlay
+        isVisible={validating}
+        message="Verificando Redis..."
+        subMessage="Testando conexão"
+      />
+
       {/* Header */}
       <div className="flex flex-col items-center text-center">
         <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center">
@@ -53,37 +121,45 @@ export function RedisForm({ data, onComplete, onBack, showBack }: FormProps) {
       {/* REST URL */}
       <div>
         <label className="block text-sm font-medium text-zinc-300 mb-2">REST URL</label>
-        <input
-          type="url"
+        <TokenInput
           value={restUrl}
-          onChange={(e) => setRestUrl(e.target.value)}
+          onChange={setRestUrl}
           placeholder="https://xxx-xxx.upstash.io"
+          validating={false}
+          success={isValidUrl && restUrl.length > 0}
+          error={restUrl.length > 0 && !isValidUrl ? 'Formato: https://xxx.upstash.io' : undefined}
+          minLength={20}
+          showCharCount={false}
+          accentColor="red"
           autoFocus
-          className={inputClass}
         />
-        {restUrl.length > 0 && (
-          <p className={cn('mt-2 text-xs', isValidUrl ? 'text-red-400' : 'text-zinc-500')}>
-            {isValidUrl ? '✓ URL válida' : 'Formato: https://xxx.upstash.io'}
-          </p>
-        )}
       </div>
 
       {/* REST Token */}
       <div>
         <label className="block text-sm font-medium text-zinc-300 mb-2">REST Token</label>
-        <input
-          type="password"
+        <TokenInput
           value={restToken}
-          onChange={(e) => setRestToken(e.target.value)}
+          onChange={(val) => {
+            setRestToken(val);
+            setError(null); // Limpa erro ao digitar
+          }}
           placeholder="AXxxxxxxxxxxxxxxxxxxxx"
-          className={inputClass}
+          validating={false}
+          success={isValidToken && restToken.length > 0}
+          error={error || (restToken.length > 0 && !isValidToken ? 'Token deve ter 30+ caracteres alfanuméricos' : undefined)}
+          minLength={VALIDATION.REDIS_TOKEN_MIN_LENGTH}
+          showCharCount={false}
+          accentColor="red"
         />
-        {restToken.length > 0 && (
-          <p className={cn('mt-2 text-xs', isValidToken ? 'text-red-400' : 'text-zinc-500')}>
-            {isValidToken ? '✓ Token válido' : 'Token deve ter 30+ caracteres alfanuméricos'}
-          </p>
-        )}
       </div>
+
+      {/* Status de validação automática */}
+      {canValidate && !validating && !success && !error && (
+        <p className="text-xs text-red-400 text-center animate-pulse">
+          Validando automaticamente...
+        </p>
+      )}
 
       {/* Collapsible help */}
       <details className="w-full group">
@@ -113,17 +189,6 @@ export function RedisForm({ data, onComplete, onBack, showBack }: FormProps) {
         </div>
       </details>
 
-      {/* Actions */}
-      <div className="flex gap-3">
-        {showBack && (
-          <Button type="button" variant="outline" onClick={onBack} className="flex-1">
-            Voltar
-          </Button>
-        )}
-        <Button type="submit" variant="brand" size="lg" className="flex-1" disabled={!canSubmit}>
-          Iniciar Instalação
-        </Button>
-      </div>
-    </form>
+    </div>
   );
 }

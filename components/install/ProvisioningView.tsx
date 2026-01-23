@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Terminal } from 'lucide-react';
+import { Terminal, AlertTriangle } from 'lucide-react';
 import { StepCard } from './StepCard';
+import { Button } from '@/components/ui/button';
 import type { InstallData, ProvisionStreamEvent, ProvisionPayload } from '@/lib/installer/types';
 
 interface ProvisioningViewProps {
@@ -12,6 +13,7 @@ interface ProvisioningViewProps {
   title: string;
   subtitle: string;
   onProgress: (event: ProvisionStreamEvent) => void;
+  onReset?: () => void;
 }
 
 /**
@@ -21,10 +23,14 @@ interface ProvisioningViewProps {
  * 1. Chamar a API de provisioning
  * 2. Parsear eventos SSE
  * 3. Reportar progresso para o parent
+ * 4. Detectar rehydration e oferecer reset (Critical #2)
  */
-export function ProvisioningView({ data, progress, title, subtitle, onProgress }: ProvisioningViewProps) {
+export function ProvisioningView({ data, progress, title, subtitle, onProgress, onReset }: ProvisioningViewProps) {
   const abortControllerRef = useRef<AbortController | null>(null);
   const hasStartedRef = useRef(false);
+
+  // Critical #2: Detectar rehydration (progress > 0 mas stream não ativo)
+  const [isRehydrated, setIsRehydrated] = useState(() => progress > 0 && progress < 100);
 
   const startProvisioning = useCallback(async () => {
     if (hasStartedRef.current) return;
@@ -86,8 +92,12 @@ export function ProvisioningView({ data, progress, title, subtitle, onProgress }
             try {
               const event: ProvisionStreamEvent = JSON.parse(line.slice(6));
               onProgress(event);
-            } catch {
-              // Ignore parse errors
+            } catch (parseErr) {
+              // Medium #5: Não silenciar erros de parse, logar para debug
+              console.warn('[Provisioning] Erro ao parsear evento SSE:', {
+                line: line.slice(0, 100),
+                error: parseErr instanceof Error ? parseErr.message : 'Erro desconhecido',
+              });
             }
           }
         }
@@ -104,12 +114,53 @@ export function ProvisioningView({ data, progress, title, subtitle, onProgress }
   }, [data, onProgress]);
 
   useEffect(() => {
+    // Critical #2: Não iniciar se estiver em estado de rehydration
+    if (isRehydrated) return;
+
     startProvisioning();
 
     return () => {
       abortControllerRef.current?.abort();
     };
-  }, [startProvisioning]);
+  }, [startProvisioning, isRehydrated]);
+
+  // Critical #2: Se detectou rehydration, mostrar aviso
+  if (isRehydrated) {
+    return (
+      <StepCard glowColor="orange">
+        <div className="flex flex-col items-center text-center py-8">
+          <div className="w-16 h-16 rounded-full bg-orange-500/20 border-2 border-orange-500 flex items-center justify-center">
+            <AlertTriangle className="w-8 h-8 text-orange-500" />
+          </div>
+
+          <h2 className="mt-6 text-xl font-semibold text-zinc-100">Instalação Interrompida</h2>
+
+          <p className="mt-2 text-sm text-zinc-400 max-w-sm">
+            Parece que a instalação foi interrompida antes de terminar.
+            Para garantir que tudo funcione corretamente, recomendamos recomeçar.
+          </p>
+
+          <div className="flex gap-3 mt-8 w-full">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setIsRehydrated(false);
+                hasStartedRef.current = false;
+              }}
+            >
+              Continuar mesmo assim
+            </Button>
+            {onReset && (
+              <Button variant="brand" className="flex-1" onClick={onReset}>
+                Recomeçar instalação
+              </Button>
+            )}
+          </div>
+        </div>
+      </StepCard>
+    );
+  }
 
   return (
     <StepCard glowColor="emerald">

@@ -15,6 +15,9 @@ import type { InboxConversation, ConversationStatus, ConversationMode } from '@/
 import { CACHE, REALTIME } from '@/lib/constants'
 import { getConversationQueryKey } from './useConversation'
 
+// Default timeout: 24 hours (can be overridden by passing timeoutMs to switchMode)
+const DEFAULT_HUMAN_MODE_TIMEOUT_MS = 24 * 60 * 60 * 1000
+
 const CONVERSATIONS_KEY = 'inbox-conversations'
 const CONVERSATIONS_LIST_KEY = [CONVERSATIONS_KEY, 'list']
 
@@ -183,13 +186,31 @@ export function useConversationMutations() {
     },
   })
 
-  // Switch mode
+  // Switch mode (with auto-expiration for human mode)
+  // timeoutMs: pass from useInboxSettings.humanModeTimeoutHours * 60 * 60 * 1000
+  // If timeoutMs is 0, human mode never expires
   const switchModeMutation = useMutation({
-    mutationFn: ({ id, mode }: { id: string; mode: ConversationMode }) =>
-      inboxService.updateConversation(id, { mode }),
-    onMutate: async ({ id, mode }) => {
+    mutationFn: ({ id, mode, timeoutMs }: { id: string; mode: ConversationMode; timeoutMs?: number }) => {
+      const effectiveTimeout = timeoutMs ?? DEFAULT_HUMAN_MODE_TIMEOUT_MS
+
+      // When switching to human mode, set expiration (unless timeout is 0 = never expires)
+      // When switching to bot mode, clear expiration
+      const human_mode_expires_at = mode === 'human' && effectiveTimeout > 0
+        ? new Date(Date.now() + effectiveTimeout).toISOString()
+        : null
+
+      return inboxService.updateConversation(id, { mode, human_mode_expires_at })
+    },
+    onMutate: async ({ id, mode, timeoutMs }) => {
       await queryClient.cancelQueries({ queryKey: CONVERSATIONS_LIST_KEY })
       await queryClient.cancelQueries({ queryKey: getConversationQueryKey(id) })
+
+      const effectiveTimeout = timeoutMs ?? DEFAULT_HUMAN_MODE_TIMEOUT_MS
+
+      // Calculate expiration for optimistic update
+      const human_mode_expires_at = mode === 'human' && effectiveTimeout > 0
+        ? new Date(Date.now() + effectiveTimeout).toISOString()
+        : null
 
       // Optimistic update - Lista de conversas
       queryClient.setQueriesData<ConversationListResult>(
@@ -199,7 +220,7 @@ export function useConversationMutations() {
           return {
             ...old,
             conversations: old.conversations.map((c) =>
-              c.id === id ? { ...c, mode } : c
+              c.id === id ? { ...c, mode, human_mode_expires_at } : c
             ),
           }
         }
@@ -208,7 +229,7 @@ export function useConversationMutations() {
       // Optimistic update - Conversa individual (para o ConversationHeader)
       queryClient.setQueryData<InboxConversation | null>(
         getConversationQueryKey(id),
-        (old) => (old ? { ...old, mode } : old)
+        (old) => (old ? { ...old, mode, human_mode_expires_at } : old)
       )
     },
     onSuccess: (_, { id }) => {

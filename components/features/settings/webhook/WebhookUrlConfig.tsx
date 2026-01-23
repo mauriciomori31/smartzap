@@ -65,7 +65,7 @@ export function WebhookUrlConfig({
       <div className="flex items-center gap-3 flex-wrap">
         {/* URL */}
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
-          <code className="px-2 py-1 bg-[var(--ds-bg-elevated)] border border-[var(--ds-border-default)] rounded font-mono text-xs text-[var(--ds-text-secondary)] truncate max-w-[280px]" title={webhookUrl}>
+          <code className="px-2 py-1 bg-[var(--ds-bg-elevated)] border border-[var(--ds-border-default)] rounded font-mono text-[11px] text-[var(--ds-text-secondary)] truncate max-w-[420px]" title={webhookUrl}>
             {webhookUrl}
           </code>
           <button

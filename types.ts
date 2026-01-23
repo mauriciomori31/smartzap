@@ -559,6 +559,8 @@ export interface InboxConversation {
   automation_paused_until: string | null;
   automation_paused_by: string | null;
   handoff_summary: string | null;
+  /** When human mode should auto-expire back to bot mode. NULL = never expires. */
+  human_mode_expires_at: string | null;
   created_at: string;
   updated_at: string;
   // Joined fields

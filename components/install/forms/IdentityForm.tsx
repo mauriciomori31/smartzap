@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { User, Mail, Lock, Eye, EyeOff, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { isValidEmail, VALIDATION } from '@/lib/installer/types';
 import type { FormProps } from './types';
 
 // Charset sem caracteres ambíguos (I, l, 1, O, 0)
@@ -58,18 +59,18 @@ export function IdentityForm({ data, onComplete }: FormProps) {
     e.preventDefault();
     setError(null);
 
-    if (!name.trim() || name.trim().length < 2) {
-      setError('Nome deve ter no mínimo 2 caracteres');
+    if (!name.trim() || name.trim().length < VALIDATION.NAME_MIN_LENGTH) {
+      setError(`Nome deve ter no mínimo ${VALIDATION.NAME_MIN_LENGTH} caracteres`);
       return;
     }
 
-    if (!email.includes('@')) {
-      setError('Email inválido');
+    if (!isValidEmail(email)) {
+      setError('Email inválido (ex: nome@email.com)');
       return;
     }
 
     if (!validation.valid) {
-      setError('Senha deve ter no mínimo 8 caracteres, 1 letra e 1 número');
+      setError(`Senha deve ter no mínimo ${VALIDATION.PASSWORD_MIN_LENGTH} caracteres, 1 letra e 1 número`);
       return;
     }
 
@@ -78,7 +79,7 @@ export function IdentityForm({ data, onComplete }: FormProps) {
       return;
     }
 
-    onComplete({ name: name.trim(), email, password });
+    onComplete({ name: name.trim(), email: email.trim(), password });
   };
 
   const inputClass = cn(
@@ -227,7 +228,7 @@ export function IdentityForm({ data, onComplete }: FormProps) {
         variant="brand"
         size="lg"
         className="w-full"
-        disabled={!name.trim() || !email || !validation.valid || password !== confirmPassword}
+        disabled={!name.trim() || !isValidEmail(email) || !validation.valid || password !== confirmPassword}
       >
         Continuar
       </Button>

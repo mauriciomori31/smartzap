@@ -58,6 +58,13 @@ import {
     useOnboardingProgress,
     type OnboardingStep,
 } from '@/components/features/onboarding'
+import {
+    EmptyStateBanner,
+    SuccessBanner,
+    CredentialsModal,
+    SetupChecklist,
+} from '@/components/features/setup'
+import { useSetupStatus } from '@/hooks/useSetupStatus'
 
 export function DashboardShell({
     children,
@@ -109,6 +116,12 @@ export function DashboardShell({
 
     // Estado para forçar abertura do modal em um step específico (ex: vindo do checklist)
     const [forceModalStep, setForceModalStep] = useState<OnboardingStep | undefined>()
+
+    // Estado para o novo modal de credenciais simplificado
+    const [showCredentialsModal, setShowCredentialsModal] = useState(false)
+
+    // Estado para mostrar banner de sucesso após conexão
+    const [showSuccessBanner, setShowSuccessBanner] = useState(false)
 
     // Onboarding status from database (fonte da verdade)
     const { data: onboardingDbStatus, refetch: refetchOnboardingStatus, isLoading: isOnboardingStatusLoading } = useQuery({
@@ -210,16 +223,23 @@ export function DashboardShell({
     }, [queryClient])
 
     // Health check query for onboarding
+    // IMPORTANTE: Não dar throw em erro para evitar race condition que desmonta componentes
     const { data: healthStatus, refetch: refetchHealth, isFetching: isHealthFetching } = useQuery<HealthStatus>({
         queryKey: ['healthStatus'],
         queryFn: async () => {
             const response = await fetch('/api/health')
-            if (!response.ok) throw new Error('Failed to fetch health')
+            if (!response.ok) {
+                console.warn('[Health] Request failed with status:', response.status)
+                // Não lançar erro - retorna null e mantém dados anteriores via staleTime
+                return null as unknown as HealthStatus
+            }
             return response.json()
         },
         initialData: initialHealthStatus ?? undefined,
         staleTime: 5 * 60 * 1000,
         gcTime: 10 * 60 * 1000,
+        retry: 1, // Só tenta 1 vez extra em caso de falha
+        retryDelay: 1000,
         refetchInterval: (query) => {
             const data = query.state.data
             const isSetupComplete = data &&
@@ -241,6 +261,9 @@ export function DashboardShell({
 
     // Determina se precisa configurar webhook (WhatsApp conectado mas webhook não)
     const needsWebhookSetup = isWhatsAppConnected && !isWebhookConfigured && healthStatus !== undefined
+
+    // Hook do novo sistema de setup (Dashboard-First)
+    const setupStatus = useSetupStatus(healthStatus ?? null)
 
     // Handler para salvar credenciais (NÃO marca como completo - o usuário ainda precisa configurar webhook)
     const handleSaveCredentials = useCallback(async (credentials: {
@@ -281,6 +304,21 @@ export function DashboardShell({
             console.error('Erro ao salvar status do onboarding no banco:', error)
         }
     }, [completeOnboarding, refetchOnboardingStatus])
+
+    // Handler para quando credenciais são conectadas com sucesso (novo fluxo Dashboard-First)
+    const handleCredentialsSuccess = useCallback(() => {
+        setShowSuccessBanner(true)
+        refetchHealth()
+        queryClient.invalidateQueries({ queryKey: ['settings'] })
+        // Marca onboarding como completo automaticamente no novo fluxo
+        handleMarkOnboardingComplete()
+    }, [refetchHealth, queryClient, handleMarkOnboardingComplete])
+
+    // Handler para abrir tutorial de como obter credenciais
+    const handleHelpClick = useCallback(() => {
+        setShowCredentialsModal(false)
+        setForceModalStep('requirements')
+    }, [])
 
     // Sidebar callback - DEVE estar antes de qualquer early return
     const handleCloseMobileMenu = useCallback(() => setIsMobileMenuOpen(false), [])
@@ -619,11 +657,65 @@ export function DashboardShell({
                     />
                 )}
 
+                {/* NOVO: Modal de credenciais simplificado (Dashboard-First) */}
+                <CredentialsModal
+                    open={showCredentialsModal}
+                    onOpenChange={setShowCredentialsModal}
+                    onSuccess={handleCredentialsSuccess}
+                    onHelpClick={handleHelpClick}
+                />
+
                 {/* Page Content */}
                 <PageContentShell>
-                    {/* Onboarding Checklist - aparece apenas na home do dashboard */}
-                    {/* Mostra se: onboarding completo (banco OU localStorage) E não dismissado E não minimizado */}
-                    {pathname === '/' && (isOnboardingCompletedInDb || shouldShowChecklist) && !onboardingProgress.isChecklistMinimized && !onboardingProgress.isChecklistDismissed && healthStatus && (
+                    {/* NOVO: EmptyStateBanner - mostra quando WhatsApp não conectado (Dashboard-First) */}
+                    {/* Guard: só mostra após health E onboarding status carregarem para evitar flash */}
+                    {pathname === '/' &&
+                     healthStatus !== undefined &&
+                     !isOnboardingStatusLoading &&
+                     !isWhatsAppConnected &&
+                     isOnboardingCompletedInDb && (
+                        <EmptyStateBanner
+                            onConnect={() => setShowCredentialsModal(true)}
+                            onHelp={() => setForceModalStep('requirements')}
+                        />
+                    )}
+
+                    {/* NOVO: SuccessBanner - mostra após conectar WhatsApp */}
+                    {pathname === '/' && showSuccessBanner && isWhatsAppConnected && (
+                        <SuccessBanner
+                            onSendTest={() => {
+                                setShowSuccessBanner(false)
+                                router.push('/campaigns/new')
+                            }}
+                        />
+                    )}
+
+                    {/* NOVO: SetupChecklist - lateral na homepage quando onboarding completo */}
+                    {/* Guard: só mostra após TODOS os loadings terminarem */}
+                    {pathname === '/' &&
+                     healthStatus !== undefined &&
+                     !isOnboardingStatusLoading &&
+                     !setupStatus.isLoading &&
+                     isOnboardingCompletedInDb &&
+                     isWhatsAppConnected &&
+                     !setupStatus.isAllComplete && (
+                        <div className="mb-6">
+                            <SetupChecklist
+                                isWhatsAppConnected={setupStatus.isWhatsAppConnected}
+                                isWebhookConfigured={setupStatus.isWebhookConfigured}
+                                hasSentFirstMessage={setupStatus.hasSentFirstMessage}
+                                isPermanentTokenConfirmed={setupStatus.isPermanentTokenConfirmed}
+                                onConnectWhatsApp={() => setShowCredentialsModal(true)}
+                                onSendTestMessage={() => router.push('/campaigns/new')}
+                                onConfigureWebhook={() => setForceModalStep('configure-webhook')}
+                                onCreatePermanentToken={() => setForceModalStep('create-permanent-token')}
+                            />
+                        </div>
+                    )}
+
+                    {/* Onboarding Checklist LEGADO - mantido para transição */}
+                    {/* Mostra se: onboarding completo (banco OU localStorage) E não dismissado E não minimizado E novo checklist não ativo */}
+                    {pathname === '/' && !isOnboardingCompletedInDb && (shouldShowChecklist) && !onboardingProgress.isChecklistMinimized && !onboardingProgress.isChecklistDismissed && healthStatus && (
                         <div className="mb-6">
                             <OnboardingChecklist
                                 healthStatus={healthStatus}

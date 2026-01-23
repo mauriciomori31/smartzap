@@ -4,21 +4,28 @@
  * Usa Upstash Workflow para processar mensagens do inbox com debounce durável.
  * Resolve o problema do setTimeout que não sobrevive à morte da função serverless.
  *
+ * IMPORTANTE: Usa context.call() para chamadas de IA
+ * - context.run() → função serverless ESPERA (consome compute)
+ * - context.call() → UPSTASH espera (não consome compute, até 2h timeout)
+ *
  * Fluxo:
  * 1. Webhook recebe mensagem → dispara workflow
  * 2. Workflow espera (context.sleep) para acumular mensagens
- * 3. Verifica se chegaram novas mensagens (loop de debounce)
- * 4. Processa com IA quando o burst termina
+ * 3. Verifica estado da conversa (context.run)
+ * 4. Processa com IA via API interna (context.call) ← DURÁVEL
  * 5. Envia resposta via WhatsApp
  */
 
 import type { WorkflowContext } from '@upstash/workflow'
 import { getRedis, REDIS_KEYS } from '@/lib/upstash/redis'
 import type { AIAgent, InboxConversation, InboxMessage } from '@/types'
+import type { SupportAgentResult } from '@/lib/ai/agents/chat-agent'
 
 // Constantes
 const DEBOUNCE_SECONDS = 5
 const MAX_DEBOUNCE_LOOPS = 10 // Evita loop infinito (máx 50s de espera)
+const AI_CALL_TIMEOUT_SECONDS = 120 // 2 minutos para chamada de IA
+const AI_CALL_RETRIES = 2 // Número de retries em caso de falha
 
 // =============================================================================
 // Types
@@ -50,7 +57,7 @@ export async function processInboxAIWorkflow(context: WorkflowContext) {
   // =========================================================================
   // Step 1: Debounce simples - espera única de 5s
   // =========================================================================
-  // TODO: Reativar loop de debounce quando ngrok/latência não for problema
+  // TODO: Reativar loop de debounce quando latência não for problema
 
   await context.sleep('debounce-wait', `${DEBOUNCE_SECONDS}s`)
   console.log(`[inbox-ai-workflow] Debounce complete after ${DEBOUNCE_SECONDS}s`)
@@ -119,6 +126,11 @@ export async function processInboxAIWorkflow(context: WorkflowContext) {
       return { valid: false as const, reason: 'agent-not-active' }
     }
 
+    // Valida que o agente tem system_prompt configurado
+    if (!agentData.system_prompt || agentData.system_prompt.trim().length < 10) {
+      return { valid: false as const, reason: 'agent-missing-system-prompt' }
+    }
+
     // Busca mensagens recentes
     const { messages: messagesData } = await inboxDb.listMessages(conversationId, { limit: 20 })
 
@@ -151,38 +163,71 @@ export async function processInboxAIWorkflow(context: WorkflowContext) {
   const messages = fetchResult.messages
 
   // =========================================================================
-  // Step 3: Processar com IA
+  // Step 3: Processar com IA via context.call()
+  // =========================================================================
+  // IMPORTANTE: Usamos context.call() em vez de context.run() porque:
+  // - context.run() → função serverless ESPERA a IA (consome compute)
+  // - context.call() → UPSTASH faz a chamada HTTP (não consome compute)
+  //
+  // Benefícios:
+  // - Timeout de até 2 horas (vs limite da plataforma)
+  // - Retries automáticos
+  // - Função não fica "travada" esperando
   // =========================================================================
 
-  const aiResult = await context.run('process-ai', async () => {
-    const { processChatAgent } = await import('@/lib/ai/agents/chat-agent')
+  // Monta URL da API interna
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
+  if (!baseUrl) {
+    console.error('[inbox-ai-workflow] No base URL configured (NEXT_PUBLIC_APP_URL or VERCEL_URL)')
+    return { status: 'error', error: 'No base URL configured' }
+  }
 
-    try {
-      const result = await processChatAgent({
-        agent,
-        conversation,
-        messages,
-      })
+  const aiApiUrl = `${baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`}/api/internal/ai-generate`
+  console.log(`[inbox-ai-workflow] Calling AI API: ${aiApiUrl}`)
 
-      return {
-        success: result.success,
-        message: result.response?.message,
-        sentiment: result.response?.sentiment,
-        shouldHandoff: result.response?.shouldHandoff,
-        handoffReason: result.response?.handoffReason,
-        handoffSummary: result.response?.handoffSummary,
-        sources: result.response?.sources,
-        logId: result.logId,
-        error: result.error,
-      }
-    } catch (err) {
-      console.error('[inbox-ai-workflow] AI processing error:', err)
+  const aiCallResult = await context.call<SupportAgentResult>('process-ai', {
+    url: aiApiUrl,
+    method: 'POST',
+    body: JSON.stringify({
+      agent,
+      conversation,
+      messages,
+    }),
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': process.env.SMARTZAP_API_KEY || '',
+    },
+    timeout: AI_CALL_TIMEOUT_SECONDS,
+    retries: AI_CALL_RETRIES,
+    retryDelay: 'pow(2, retried) * 1000', // Exponential backoff: 1s, 2s, 4s
+  })
+
+  // Processa resultado da chamada HTTP
+  const aiResult = (() => {
+    // Verifica se a chamada HTTP foi bem-sucedida
+    if (aiCallResult.status !== 200) {
+      console.error(`[inbox-ai-workflow] AI API returned status ${aiCallResult.status}:`, aiCallResult.body)
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Unknown error',
+        error: `AI API error: status ${aiCallResult.status}`,
       }
     }
-  })
+
+    // Extrai resultado do body
+    const result = aiCallResult.body as SupportAgentResult
+
+    return {
+      success: result.success,
+      message: result.response?.message,
+      sentiment: result.response?.sentiment,
+      shouldHandoff: result.response?.shouldHandoff,
+      handoffReason: result.response?.handoffReason,
+      handoffSummary: result.response?.handoffSummary,
+      sources: result.response?.sources,
+      logId: result.logId,
+      error: result.error,
+    }
+  })()
 
   if (!aiResult.success || !aiResult.message) {
     console.log(`[inbox-ai-workflow] AI processing failed: ${aiResult.error}`)

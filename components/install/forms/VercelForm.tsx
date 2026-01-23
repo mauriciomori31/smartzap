@@ -2,29 +2,84 @@
 
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { TokenInput } from '../TokenInput';
+import { ValidatingOverlay } from '../ValidatingOverlay';
+import { SuccessCheckmark } from '../SuccessCheckmark';
+import { VALIDATION } from '@/lib/installer/types';
 import type { FormProps } from './types';
 
 /**
- * Form de token Vercel simplificado.
- * Apenas coleta o token, sem validação de API.
- * A validação acontece no provisioning.
+ * Form de token Vercel com comportamento MÁGICO.
+ *
+ * Fluxo:
+ * 1. Usuário cola o token
+ * 2. Após 24+ chars, aguarda 800ms
+ * 3. Valida automaticamente via API
+ * 4. Mostra checkmark e auto-avança
  */
 export function VercelForm({ data, onComplete, onBack, showBack }: FormProps) {
   const [token, setToken] = useState(data.vercelToken);
+  const [validating, setValidating] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState<string | null>(null);
 
-  const isValidFormat = token.trim().length >= 24;
+  const handleValidate = async () => {
+    if (token.trim().length < VALIDATION.VERCEL_TOKEN_MIN_LENGTH) {
+      setError('Token muito curto');
+      return;
+    }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isValidFormat) {
-      onComplete({ vercelToken: token.trim() });
+    setValidating(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/installer/bootstrap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: token.trim(),
+          domain: window.location.hostname,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Token inválido');
+      }
+
+      setProjectName(result.project?.name || 'Projeto encontrado');
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao validar token');
+    } finally {
+      setValidating(false);
     }
   };
 
+  const handleSuccessComplete = () => {
+    onComplete({ vercelToken: token.trim() });
+  };
+
+  // Estado de sucesso - mostra checkmark e auto-avança
+  if (success) {
+    return (
+      <SuccessCheckmark
+        message={projectName ? `Projeto "${projectName}" encontrado!` : 'Token validado!'}
+        onComplete={handleSuccessComplete}
+      />
+    );
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <div className="relative space-y-5">
+      <ValidatingOverlay
+        isVisible={validating}
+        message="Verificando token..."
+        subMessage="Procurando seu projeto na Vercel"
+      />
+
       {/* Header */}
       <div className="flex flex-col items-center text-center">
         <div className="w-14 h-14 rounded-full bg-zinc-900 border border-zinc-700 flex items-center justify-center">
@@ -36,30 +91,20 @@ export function VercelForm({ data, onComplete, onBack, showBack }: FormProps) {
         <p className="mt-1 text-sm text-zinc-400">Cole seu token de acesso</p>
       </div>
 
-      {/* Input */}
-      <div>
-        <label className="block text-sm font-medium text-zinc-300 mb-2">Vercel Access Token</label>
-        <input
-          type="password"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          placeholder="Cole seu token aqui..."
-          autoFocus
-          className={cn(
-            'w-full px-4 py-3 rounded-xl',
-            'bg-zinc-800/50 border border-zinc-700',
-            'text-zinc-100 placeholder:text-zinc-500 font-mono text-sm',
-            'focus:border-blue-500 focus:outline-none',
-            'focus:shadow-[0_0_0_3px_theme(colors.blue.500/0.15)]',
-            'transition-all duration-200'
-          )}
-        />
-        {token.length > 0 && (
-          <p className={cn('mt-2 text-xs', isValidFormat ? 'text-blue-400' : 'text-zinc-500')}>
-            {isValidFormat ? '✓ Formato válido' : `${token.length}/24 caracteres mínimos`}
-          </p>
-        )}
-      </div>
+      {/* Token Input Mágico */}
+      <TokenInput
+        value={token}
+        onChange={setToken}
+        placeholder="Cole seu token aqui..."
+        validating={validating}
+        error={error || undefined}
+        minLength={VALIDATION.VERCEL_TOKEN_MIN_LENGTH}
+        autoSubmitLength={VALIDATION.VERCEL_TOKEN_MIN_LENGTH}
+        onAutoSubmit={handleValidate}
+        showCharCount={false}
+        accentColor="blue"
+        autoFocus
+      />
 
       {/* Collapsible help */}
       <details className="w-full group">
@@ -86,17 +131,6 @@ export function VercelForm({ data, onComplete, onBack, showBack }: FormProps) {
         </div>
       </details>
 
-      {/* Actions */}
-      <div className="flex gap-3">
-        {showBack && (
-          <Button type="button" variant="outline" onClick={onBack} className="flex-1">
-            Voltar
-          </Button>
-        )}
-        <Button type="submit" variant="brand" size="lg" className="flex-1" disabled={!isValidFormat}>
-          Continuar
-        </Button>
-      </div>
-    </form>
+    </div>
   );
 }

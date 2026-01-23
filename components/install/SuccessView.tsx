@@ -10,10 +10,24 @@ interface SuccessViewProps {
 }
 
 /**
+ * Sanitiza e extrai o primeiro nome.
+ * Minor #12: Garante que o nome seja seguro para exibição.
+ */
+function sanitizeFirstName(fullName: string): string {
+  // Remove espaços extras e pega primeiro nome
+  const firstName = fullName.trim().split(/\s+/)[0] || '';
+
+  // Limita tamanho e remove caracteres potencialmente problemáticos
+  const sanitized = firstName.slice(0, 30).replace(/[<>'"&]/g, '');
+
+  return sanitized || 'você';
+}
+
+/**
  * View de sucesso após instalação completa.
  */
 export function SuccessView({ name }: SuccessViewProps) {
-  const firstName = name.split(' ')[0] || 'você';
+  const firstName = sanitizeFirstName(name);
 
   const handleGoToDashboard = () => {
     window.location.href = '/login';

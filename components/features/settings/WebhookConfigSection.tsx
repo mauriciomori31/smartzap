@@ -138,7 +138,7 @@ export function WebhookConfigSection({
     }
   };
 
-  // Handler para ativar WABA - passa a URL computada (ex: ngrok)
+  // Handler para ativar WABA - passa a URL computada (ex: URL de túnel em dev)
   const handleActivateWaba = async () => {
     if (!computedWebhookUrl) {
       toast.error('URL do webhook não configurada');

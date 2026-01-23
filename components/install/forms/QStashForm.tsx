@@ -2,32 +2,94 @@
 
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { TokenInput } from '../TokenInput';
+import { ValidatingOverlay } from '../ValidatingOverlay';
+import { SuccessCheckmark } from '../SuccessCheckmark';
+import { VALIDATION } from '@/lib/installer/types';
 import type { FormProps } from './types';
 
 /**
- * Form de token QStash simplificado.
- * Apenas coleta o token, sem validação de API.
+ * Form de token QStash com comportamento MÁGICO.
+ *
+ * Fluxo:
+ * 1. Usuário cola o token (eyJ... ou qstash_...)
+ * 2. Após 30+ chars com formato válido, aguarda 800ms
+ * 3. Valida automaticamente via API
+ * 4. Mostra checkmark e auto-avança
  */
 export function QStashForm({ data, onComplete, onBack, showBack }: FormProps) {
   const [token, setToken] = useState(data.qstashToken);
+  const [validating, setValidating] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // QStash token: JWT (eyJ...) ou qstash_
   const isValidFormat =
-    token.trim().startsWith('eyJ') || token.trim().startsWith('qstash_') || token.trim().split('.').length === 3;
+    token.trim().startsWith('eyJ') ||
+    token.trim().startsWith('qstash_') ||
+    token.trim().split('.').length === 3;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isValidFormat && token.trim().length >= 30) {
-      onComplete({ qstashToken: token.trim() });
+  const canValidate = isValidFormat && token.trim().length >= VALIDATION.QSTASH_TOKEN_MIN_LENGTH;
+
+  const handleValidate = async () => {
+    if (!canValidate) {
+      setError('Token deve começar com eyJ ou qstash_');
+      return;
+    }
+
+    setValidating(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/installer/qstash/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: token.trim() }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok || result.error) {
+        throw new Error(result.error || 'Token inválido');
+      }
+
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao validar token');
+    } finally {
+      setValidating(false);
     }
   };
 
-  const canSubmit = isValidFormat && token.trim().length >= 30;
+  const handleSuccessComplete = () => {
+    onComplete({ qstashToken: token.trim() });
+  };
+
+  // Só auto-submit se formato válido
+  const handleAutoSubmit = () => {
+    if (canValidate) {
+      handleValidate();
+    }
+  };
+
+  // Estado de sucesso
+  if (success) {
+    return (
+      <SuccessCheckmark
+        message="QStash conectado!"
+        onComplete={handleSuccessComplete}
+      />
+    );
+  }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <div className="relative space-y-5">
+      <ValidatingOverlay
+        isVisible={validating}
+        message="Verificando token..."
+        subMessage="Conectando ao QStash"
+      />
+
       {/* Header */}
       <div className="flex flex-col items-center text-center">
         <div className="w-14 h-14 rounded-full bg-orange-500/10 border border-orange-500/30 flex items-center justify-center">
@@ -41,30 +103,20 @@ export function QStashForm({ data, onComplete, onBack, showBack }: FormProps) {
         <p className="mt-1 text-sm text-zinc-400">Token do Upstash QStash</p>
       </div>
 
-      {/* Input */}
-      <div>
-        <label className="block text-sm font-medium text-zinc-300 mb-2">QStash Token</label>
-        <input
-          type="password"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          placeholder="eyJVc2VySUQi... ou qstash_..."
-          autoFocus
-          className={cn(
-            'w-full px-4 py-3 rounded-xl',
-            'bg-zinc-800/50 border border-zinc-700',
-            'text-zinc-100 placeholder:text-zinc-500 font-mono text-sm',
-            'focus:border-orange-500 focus:outline-none',
-            'focus:shadow-[0_0_0_3px_theme(colors.orange.500/0.15)]',
-            'transition-all duration-200'
-          )}
-        />
-        {token.length > 0 && (
-          <p className={cn('mt-2 text-xs', canSubmit ? 'text-orange-400' : 'text-zinc-500')}>
-            {canSubmit ? '✓ Formato válido' : 'Token deve começar com eyJ ou qstash_'}
-          </p>
-        )}
-      </div>
+      {/* Token Input Mágico */}
+      <TokenInput
+        value={token}
+        onChange={setToken}
+        placeholder="eyJVc2VySUQi... ou qstash_..."
+        validating={validating}
+        error={error || undefined}
+        minLength={VALIDATION.QSTASH_TOKEN_MIN_LENGTH}
+        autoSubmitLength={VALIDATION.QSTASH_TOKEN_MIN_LENGTH}
+        onAutoSubmit={handleAutoSubmit}
+        showCharCount={false}
+        accentColor="orange"
+        autoFocus
+      />
 
       {/* Collapsible help */}
       <details className="w-full group">
@@ -90,17 +142,6 @@ export function QStashForm({ data, onComplete, onBack, showBack }: FormProps) {
         </div>
       </details>
 
-      {/* Actions */}
-      <div className="flex gap-3">
-        {showBack && (
-          <Button type="button" variant="outline" onClick={onBack} className="flex-1">
-            Voltar
-          </Button>
-        )}
-        <Button type="submit" variant="brand" size="lg" className="flex-1" disabled={!canSubmit}>
-          Continuar
-        </Button>
-      </div>
-    </form>
+    </div>
   );
 }

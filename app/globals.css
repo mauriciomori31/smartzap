@@ -318,7 +318,8 @@ body {
 }
 
 /* Enhanced focus indicators for keyboard navigation */
-:focus-visible {
+/* Excluindo inputs pois cada componente gerencia seu próprio focus */
+:focus-visible:not(input):not(textarea):not(select) {
   outline: 2px solid var(--color-primary-400);
   outline-offset: 2px;
 }
@@ -332,7 +333,7 @@ a:focus-visible,
   box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.2);
 }
 
-input:focus-visible,
+/* Input focus styles removidos - cada componente gerencia seu próprio focus */
 select:focus-visible,
 textarea:focus-visible {
   outline: none;

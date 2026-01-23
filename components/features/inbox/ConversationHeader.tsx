@@ -136,7 +136,7 @@ export function ConversationHeader({
   isResuming,
   isDeleting,
 }: ConversationHeaderProps) {
-  const { phone, contact, mode, status, priority, labels: conversationLabels, automation_paused_until, ai_agent } = conversation
+  const { phone, contact, mode, status, priority, labels: conversationLabels, automation_paused_until, human_mode_expires_at, ai_agent } = conversation
 
   // Delete confirmation dialog state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -165,17 +165,28 @@ export function ConversationHeader({
   const isPaused = automation_paused_until && new Date(automation_paused_until) > new Date()
   const pausedUntilDate = automation_paused_until ? new Date(automation_paused_until) : null
 
-  // Format remaining pause time
-  const formatPauseRemaining = () => {
-    if (!pausedUntilDate) return ''
+  // Human mode expiration
+  const humanModeExpiresAt = human_mode_expires_at ? new Date(human_mode_expires_at) : null
+  const hasHumanModeExpiration = humanModeExpiresAt && humanModeExpiresAt > new Date()
+
+  // Format remaining time (reusable)
+  const formatTimeRemaining = (targetDate: Date | null) => {
+    if (!targetDate) return ''
     const now = new Date()
-    const diff = pausedUntilDate.getTime() - now.getTime()
+    const diff = targetDate.getTime() - now.getTime()
+    if (diff <= 0) return 'expirado'
     const minutes = Math.ceil(diff / (1000 * 60))
-    if (minutes < 60) return `${minutes}min restantes`
+    if (minutes < 60) return `${minutes}min`
     const hours = Math.floor(minutes / 60)
     const remainingMinutes = minutes % 60
-    return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}min` : `${hours}h restantes`
+    return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}min` : `${hours}h`
   }
+
+  // Format remaining pause time
+  const formatPauseRemaining = () => formatTimeRemaining(pausedUntilDate) + ' restantes'
+
+  // Format human mode expiration
+  const formatHumanModeExpiration = () => formatTimeRemaining(humanModeExpiresAt)
 
   // Check if a label is assigned
   const isLabelAssigned = (labelId: string) =>
@@ -273,18 +284,23 @@ export function ConversationHeader({
                 <>
                   <User className="h-2.5 w-2.5" />
                   <span>Humano</span>
+                  {hasHumanModeExpiration && (
+                    <span className="text-[8px] opacity-70">({formatHumanModeExpiration()})</span>
+                  )}
                 </>
               )}
             </button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">
+          <TooltipContent side="bottom" className="text-xs max-w-[200px]">
             {isBotMode
               ? aiGlobalEnabled
-                ? 'Assumir controle'
+                ? 'Assumir controle (volta ao bot em 24h)'
                 : 'IA desativada globalmente - Assumir controle'
-              : aiGlobalEnabled
-                ? 'Ativar bot'
-                : 'IA desativada globalmente'}
+              : hasHumanModeExpiration
+                ? `Volta ao bot em ${formatHumanModeExpiration()}. Clique para ativar bot agora.`
+                : aiGlobalEnabled
+                  ? 'Ativar bot'
+                  : 'IA desativada globalmente'}
           </TooltipContent>
         </Tooltip>
 

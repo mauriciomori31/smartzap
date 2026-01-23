@@ -10,6 +10,7 @@ import { useConversations, useConversationMutations } from './useConversations'
 import { useConversationWithMessages } from './useConversation'
 import { useLabels } from './useLabels'
 import { useQuickReplies } from './useQuickReplies'
+import { useInboxSettings, getHumanModeTimeoutMs } from './useInboxSettings'
 import { aiAgentService, type UpdateAIAgentParams } from '@/services/aiAgentService'
 import type { ConversationStatus, ConversationMode, ConversationPriority, AIAgent, InboxConversation, InboxLabel, InboxQuickReply } from '@/types'
 
@@ -29,6 +30,9 @@ export function useInbox(options: UseInboxOptions = {}) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
+
+  // Inbox settings (human mode timeout)
+  const { humanModeTimeoutHours } = useInboxSettings()
 
   // State for filters
   const [search, setSearch] = useState('')
@@ -183,13 +187,18 @@ export function useInbox(options: UseInboxOptions = {}) {
     [selectedId, sendMessage, selectedConversation?.mode, conversationMutations]
   )
 
-  // Toggle mode (bot <-> human)
+  // Toggle mode (bot <-> human) with configured timeout
   const handleModeToggle = useCallback(async () => {
     if (!selectedConversation) return
     const newMode: ConversationMode =
       selectedConversation.mode === 'bot' ? 'human' : 'bot'
-    await conversationMutations.switchMode({ id: selectedConversation.id, mode: newMode })
-  }, [selectedConversation, conversationMutations])
+    const timeoutMs = getHumanModeTimeoutMs(humanModeTimeoutHours)
+    await conversationMutations.switchMode({
+      id: selectedConversation.id,
+      mode: newMode,
+      timeoutMs,
+    })
+  }, [selectedConversation, conversationMutations, humanModeTimeoutHours])
 
   // Close conversation
   const handleCloseConversation = useCallback(async () => {

@@ -204,7 +204,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: 'URL localhost não é acessível pela Meta. Use uma URL pública (ex: ngrok) ou teste em produção.',
+        error: 'URL localhost não é acessível pela Meta. Use uma URL pública (ex: Cloudflare Tunnel) ou teste em produção.',
         details: { attemptedUrl: callbackUrl },
       },
       { status: 400 }
@@ -245,7 +245,7 @@ export async function POST(request: Request) {
           details: {
             metaError: errorMessage,
             attemptedUrl: callbackUrl,
-            hint: 'A Meta faz uma requisição GET para validar a URL. Se estiver em desenvolvimento, use ngrok ou similar.',
+            hint: 'A Meta faz uma requisição GET para validar a URL. Se estiver em desenvolvimento, use Cloudflare Tunnel ou similar.',
           },
         },
         { status: 400 }

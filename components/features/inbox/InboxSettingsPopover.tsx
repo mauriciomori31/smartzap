@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { Settings, Archive, Save, Loader2 } from 'lucide-react'
+import { Settings, Archive, Save, Loader2, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import {
@@ -19,18 +19,41 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface InboxSettings {
   retention_days: number
+  human_mode_timeout_hours: number
 }
+
+// Timeout options in hours
+const TIMEOUT_OPTIONS = [
+  { value: '1', label: '1 hora' },
+  { value: '2', label: '2 horas' },
+  { value: '4', label: '4 horas' },
+  { value: '8', label: '8 horas' },
+  { value: '12', label: '12 horas' },
+  { value: '24', label: '24 horas (padrão)' },
+  { value: '48', label: '48 horas' },
+  { value: '72', label: '72 horas' },
+  { value: '0', label: 'Nunca expira' },
+]
 
 export function InboxSettingsPopover() {
   const [isOpen, setIsOpen] = useState(false)
   const [retentionDays, setRetentionDays] = useState(90)
+  const [timeoutHours, setTimeoutHours] = useState('24')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
-  const [originalValue, setOriginalValue] = useState(90)
+  const [originalRetention, setOriginalRetention] = useState(90)
+  const [originalTimeout, setOriginalTimeout] = useState('24')
 
   // Load settings when popover opens
   useEffect(() => {
@@ -43,7 +66,9 @@ export function InboxSettingsPopover() {
         if (response.ok) {
           const data: InboxSettings = await response.json()
           setRetentionDays(data.retention_days)
-          setOriginalValue(data.retention_days)
+          setOriginalRetention(data.retention_days)
+          setTimeoutHours(String(data.human_mode_timeout_hours))
+          setOriginalTimeout(String(data.human_mode_timeout_hours))
         }
       } catch (error) {
         console.error('Failed to load inbox settings:', error)
@@ -56,8 +81,10 @@ export function InboxSettingsPopover() {
 
   // Track changes
   useEffect(() => {
-    setHasChanges(retentionDays !== originalValue)
-  }, [retentionDays, originalValue])
+    const retentionChanged = retentionDays !== originalRetention
+    const timeoutChanged = timeoutHours !== originalTimeout
+    setHasChanges(retentionChanged || timeoutChanged)
+  }, [retentionDays, originalRetention, timeoutHours, originalTimeout])
 
   // Save handler
   const handleSave = async () => {
@@ -66,7 +93,10 @@ export function InboxSettingsPopover() {
       const response = await fetch('/api/settings/inbox', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ retention_days: retentionDays }),
+        body: JSON.stringify({
+          retention_days: retentionDays,
+          human_mode_timeout_hours: parseInt(timeoutHours, 10),
+        }),
       })
 
       if (!response.ok) {
@@ -74,7 +104,8 @@ export function InboxSettingsPopover() {
       }
 
       const data: InboxSettings = await response.json()
-      setOriginalValue(data.retention_days)
+      setOriginalRetention(data.retention_days)
+      setOriginalTimeout(String(data.human_mode_timeout_hours))
       setHasChanges(false)
       toast.success('Configurações salvas')
     } catch (error) {
@@ -120,6 +151,31 @@ export function InboxSettingsPopover() {
           </div>
         ) : (
           <div className="p-3 space-y-4">
+            {/* Timeout do modo humano */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Clock className="h-3.5 w-3.5 text-blue-500" />
+                <span className="text-xs font-medium text-[var(--ds-text-primary)]">
+                  Timeout do Modo Humano
+                </span>
+              </div>
+              <p className="text-[10px] text-[var(--ds-text-muted)] leading-relaxed">
+                Quando você assumir uma conversa, ela voltará automaticamente para o bot após este período.
+              </p>
+              <Select value={timeoutHours} onValueChange={setTimeoutHours}>
+                <SelectTrigger className="w-full h-8 text-xs">
+                  <SelectValue placeholder="Selecione o timeout" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIMEOUT_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value} className="text-xs">
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Retenção de mensagens */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">

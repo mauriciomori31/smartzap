@@ -136,7 +136,7 @@ export function FlowEndpointPanel({ devBaseUrl }: FlowEndpointPanelProps) {
             ) : null}
             {devEndpointUrl ? (
               <p className="mt-2 text-[11px] text-emerald-300">
-                URL dev (ngrok) ativa nesta tela.
+                URL dev (túnel) ativa nesta tela.
               </p>
             ) : null}
           </div>

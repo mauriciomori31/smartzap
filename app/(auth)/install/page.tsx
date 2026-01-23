@@ -1,9 +1,28 @@
 'use client';
 
-import { useReducer, useState, useCallback } from 'react';
+import { useReducer, useCallback, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { installReducer, initialState, isCollecting, isProvisioning, isError, isSuccess } from '@/lib/installer/machine';
-import { InstallData, EMPTY_INSTALL_DATA, InstallStep, ProvisionStreamEvent } from '@/lib/installer/types';
+import {
+  installReducer,
+  initialState,
+  isCollecting,
+  isProvisioning,
+  isError,
+  isSuccess,
+  persistState,
+  hydrateState,
+  clearPersistedState,
+  createInitialState,
+} from '@/lib/installer/machine';
+import {
+  InstallData,
+  InstallStep,
+  ProvisionStreamEvent,
+  actions,
+  isProgressEvent,
+  isErrorEvent,
+  isCompleteEvent,
+} from '@/lib/installer/types';
 import { InstallLayout } from '@/components/install/InstallLayout';
 import { StepCard } from '@/components/install/StepCard';
 import {
@@ -37,64 +56,92 @@ const stepVariants = {
 };
 
 // =============================================================================
+// INITIAL STATE WITH HYDRATION
+// =============================================================================
+
+function getInitialState() {
+  // No SSR, retorna estado padrão
+  if (typeof window === 'undefined') return initialState;
+
+  // Tenta recuperar estado salvo
+  const savedState = hydrateState();
+  if (savedState) {
+    console.log('[Installer] Estado recuperado do localStorage');
+    return savedState;
+  }
+
+  return initialState;
+}
+
+// =============================================================================
 // MAIN PAGE
 // =============================================================================
 
 export default function InstallPage() {
-  const [state, dispatch] = useReducer(installReducer, initialState);
-  const [data, setData] = useState<InstallData>(EMPTY_INSTALL_DATA);
-  const [direction, setDirection] = useState(1);
+  // ✅ MELHORIA: Apenas 1 useReducer, data está DENTRO do state
+  const [state, dispatch] = useReducer(installReducer, undefined, getInitialState);
 
   // ---------------------------------------------------------------------------
-  // HANDLERS
+  // PERSISTÊNCIA (MELHORIA #9)
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    // Persiste estado a cada mudança (exceto provisioning)
+    persistState(state);
+  }, [state]);
+
+  // Limpa estado persistido quando chega no success
+  useEffect(() => {
+    if (isSuccess(state)) {
+      clearPersistedState();
+    }
+  }, [state]);
+
+  // ---------------------------------------------------------------------------
+  // HANDLERS - AGORA USANDO ACTION CREATORS
   // ---------------------------------------------------------------------------
 
   const handleStepComplete = useCallback((stepData: Partial<InstallData>) => {
-    setData((prev) => ({ ...prev, ...stepData }));
-    setDirection(1);
-    dispatch({ type: 'NEXT' });
+    // ✅ MELHORIA: Ação atômica evita race condition
+    dispatch(actions.submitStep(stepData));
   }, []);
 
   const handleBack = useCallback(() => {
-    setDirection(-1);
-    dispatch({ type: 'BACK' });
+    // ✅ MELHORIA: Direction agora é gerenciado pelo reducer
+    dispatch(actions.back());
   }, []);
 
   const handleProvisionProgress = useCallback((event: ProvisionStreamEvent) => {
-    if (event.type === 'progress') {
-      dispatch({
-        type: 'PROGRESS',
-        progress: event.progress ?? 0,
-        title: event.title ?? '',
-        subtitle: event.subtitle ?? '',
-      });
-    } else if (event.type === 'error') {
-      dispatch({
-        type: 'ERROR',
-        returnToStep: event.returnToStep ?? 1,
-        error: event.error ?? 'Erro desconhecido',
-        errorDetails: event.errorDetails,
-      });
-    } else if (event.type === 'complete') {
-      dispatch({ type: 'COMPLETE' });
+    // ✅ MELHORIA: Type guards garantem tipagem correta
+    if (isProgressEvent(event)) {
+      dispatch(actions.progress(event.progress, event.title, event.subtitle));
+    } else if (isErrorEvent(event)) {
+      dispatch(actions.error(event.error, event.returnToStep, event.errorDetails));
+    } else if (isCompleteEvent(event)) {
+      dispatch(actions.complete());
     }
   }, []);
 
   const handleRetry = useCallback(() => {
-    dispatch({ type: 'RETRY' });
+    dispatch(actions.retry());
   }, []);
 
   const handleGoToStep = useCallback((step: InstallStep) => {
-    setDirection(step > (isCollecting(state) ? state.step : 1) ? 1 : -1);
-    dispatch({ type: 'GO_TO_STEP', step });
-  }, [state]);
+    // ✅ MELHORIA: Direction calculado pelo reducer
+    dispatch(actions.goToStep(step));
+  }, []);
+
+  const handleReset = useCallback(() => {
+    // Critical #2: Permite recomeçar do zero após interrupção
+    dispatch(actions.reset());
+  }, []);
 
   // ---------------------------------------------------------------------------
   // RENDER: COLLECTING PHASE
   // ---------------------------------------------------------------------------
 
   if (isCollecting(state)) {
-    const { step } = state;
+    const { step, data, direction } = state; // ✅ Tudo vem do state agora
 
     const glowColors: Record<InstallStep, 'emerald' | 'blue' | 'orange' | 'red'> = {
       1: 'emerald',
@@ -106,7 +153,7 @@ export default function InstallPage() {
 
     const renderForm = () => {
       const formProps = {
-        data,
+        data, // ✅ Vem do state.data
         onComplete: handleStepComplete,
         onBack: handleBack,
         showBack: step > 1,
@@ -130,18 +177,7 @@ export default function InstallPage() {
 
     return (
       <InstallLayout currentStep={step} totalSteps={5}>
-        {/* Back button */}
-        {step > 1 && (
-          <motion.button
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            onClick={handleBack}
-            className="absolute top-4 left-4 text-zinc-400 hover:text-zinc-200 transition-colors z-20"
-          >
-            ← Voltar
-          </motion.button>
-        )}
-
+        {/* Botão "Voltar" removido - já existe dentro dos forms */}
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={step}
@@ -173,11 +209,12 @@ export default function InstallPage() {
     return (
       <InstallLayout showDots={false}>
         <ProvisioningView
-          data={data}
+          data={state.data} // ✅ Vem do state.data
           progress={state.progress}
           title={state.title}
           subtitle={state.subtitle}
           onProgress={handleProvisionProgress}
+          onReset={handleReset} // Critical #2: Permite recomeçar após interrupção
         />
       </InstallLayout>
     );
@@ -208,7 +245,7 @@ export default function InstallPage() {
   if (isSuccess(state)) {
     return (
       <InstallLayout showDots={false}>
-        <SuccessView name={data.name} />
+        <SuccessView name={state.data.name} /> {/* ✅ Vem do state.data */}
       </InstallLayout>
     );
   }

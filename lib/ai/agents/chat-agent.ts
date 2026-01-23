@@ -185,6 +185,7 @@ export type SupportResponse = z.infer<typeof supportResponseSchema>
 const DEFAULT_MODEL_ID = 'gemini-3-flash-preview'
 const DEFAULT_TEMPERATURE = 0.7
 const DEFAULT_MAX_TOKENS = 2048
+const AI_TIMEOUT_MS = 90_000 // 90 segundos - timeout para chamadas de IA (considera RAG + tools)
 
 /**
  * Converte formatação Markdown para WhatsApp.
@@ -525,17 +526,28 @@ export async function processChatAgent(
     console.log(`[chat-agent] 🚀 Calling generateText...`)
     const startGenerate = Date.now()
 
+    // Timeout AbortController - previne que chamadas de IA fiquem penduradas
+    const abortController = new AbortController()
+    const timeoutId = setTimeout(() => {
+      console.error(`[chat-agent] ⏱️ AI call timed out after ${AI_TIMEOUT_MS}ms`)
+      abortController.abort()
+    }, AI_TIMEOUT_MS)
+
     try {
       const result = await generateText({
         model,
         system: systemPrompt,
         messages: aiMessages,
         tools,
+        toolChoice: 'required', // FORÇA o LLM a chamar uma tool (respond)
         // Para quando respond for chamado OU após 3 steps (o que vier primeiro)
         stopWhen: (event) => stopCondition() || stepCountIs(3)(event),
         temperature: agent.temperature ?? DEFAULT_TEMPERATURE,
         maxOutputTokens: agent.max_tokens ?? DEFAULT_MAX_TOKENS,
+        abortSignal: abortController.signal,
       })
+
+      clearTimeout(timeoutId) // Limpa timeout se completou
 
       console.log(`[chat-agent] ✅ generateText completed in ${Date.now() - startGenerate}ms`)
       console.log(`[chat-agent] Steps executed: ${result.steps?.length || 0}`)
@@ -548,7 +560,16 @@ export async function processChatAgent(
       })
 
     } catch (genError) {
-      console.error(`[chat-agent] ❌ generateText failed after ${Date.now() - startGenerate}ms:`, genError)
+      clearTimeout(timeoutId) // Limpa timeout em caso de erro
+      const elapsed = Date.now() - startGenerate
+
+      // Detecta se foi timeout
+      if (abortController.signal.aborted) {
+        console.error(`[chat-agent] ❌ generateText ABORTED (timeout) after ${elapsed}ms`)
+        throw new Error(`AI call timed out after ${AI_TIMEOUT_MS / 1000}s`)
+      }
+
+      console.error(`[chat-agent] ❌ generateText failed after ${elapsed}ms:`, genError)
       throw genError
     }
 
@@ -566,7 +587,16 @@ export async function processChatAgent(
 
   } catch (err) {
     error = err instanceof Error ? err.message : 'Unknown error'
-    console.error('[chat-agent] Error:', error)
+    console.error('[chat-agent] ❌ Error:', error)
+    console.error('[chat-agent] ❌ Full error object:', err)
+    console.error('[chat-agent] ❌ Context:', {
+      modelId,
+      provider,
+      agentId: agent.id,
+      agentName: agent.name,
+      hasKnowledgeBase,
+      messageCount: messages.length,
+    })
   }
 
   const latencyMs = Date.now() - startTime
