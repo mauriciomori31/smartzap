@@ -1006,6 +1006,7 @@ export async function POST(request: NextRequest) {
           url: `${baseUrl}/api/campaign/workflow`,
           body: workflowPayload,
           headers: Object.keys(headers).length > 0 ? headers : undefined,
+          retries: 3,
         })
       } catch (err) {
         throw err

@@ -641,6 +641,7 @@ export async function POST(_request: Request, { params }: Params) {
       await workflowClient.trigger({
         url: `${baseUrl}/api/campaign/workflow`,
         body: workflowPayload,
+        retries: 3,
       })
     }
 

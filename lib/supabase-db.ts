@@ -1023,81 +1023,117 @@ export const contactDb = {
     import: async (contacts: Omit<Contact, 'id' | 'lastActive'>[]): Promise<{ inserted: number; updated: number }> => {
         if (contacts.length === 0) return { inserted: 0, updated: 0 }
 
+        // Tamanho máximo de cada lote para evitar estouro de URL/payload no Supabase
+        const BATCH_SIZE = 500
+
+        // Helper: divide array em lotes de N
+        const chunk = <T>(arr: T[], size: number): T[][] =>
+            Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
+                arr.slice(i * size, i * size + size)
+            )
+
         const now = new Date().toISOString()
-        const phones = contacts.map(c => c.phone).filter(Boolean)
 
-        // Buscar contatos existentes pelos telefones
-        const { data: existingContacts } = await supabase
-            .from('contacts')
-            .select('id, phone, name, email, tags, custom_fields')
-            .in('phone', phones)
+        // Normaliza telefone para E.164 usando a mesma lógica do normalizePhoneNumber
+        // Garante que números como "5524999402004" virem "+5524999402004"
+        // Sempre usa só os dígitos para evitar mismatch de deduplicação
+        // ex: "+55 (11) 9999-0001" e "+5511999990001" seriam tratados como contatos diferentes
+        const normalizePhone = (p: string): string => {
+            if (!p || typeof p !== 'string') return ''
+            const digits = p.replace(/\D/g, '')
+            if (!digits) return ''
+            return `+${digits}`
+        }
 
-        const existingByPhone = new Map(
-            (existingContacts || []).map(c => [c.phone, c])
-        )
+        // Normaliza e filtra contatos com telefone inválido (vazio ou só "+")
+        const normalizedContacts = contacts
+            .map(c => ({ ...c, phone: normalizePhone(c.phone) }))
+            .filter(c => c.phone.length > 2) // mínimo "+X" válido tem pelo menos 3 chars
 
-        const toInsert: any[] = []
-        const toUpdate: any[] = []
+        if (normalizedContacts.length === 0) return { inserted: 0, updated: 0 }
 
-        contacts.forEach(contact => {
+        const phones = [...new Set(normalizedContacts.map(c => c.phone))]
+
+        // Busca contatos existentes em lotes para evitar URL muito longa (limite ~8KB)
+        const allExisting: any[] = []
+        for (const batch of chunk(phones, BATCH_SIZE)) {
+            const { data, error } = await supabase
+                .from('contacts')
+                .select('id, phone, name, email, tags, custom_fields')
+                .in('phone', batch)
+            if (error) throw error
+            if (data) allExisting.push(...data)
+        }
+
+        const existingByPhone = new Map(allExisting.map(c => [c.phone, c]))
+
+        const toInsertMap = new Map<string, any>() // chave: phone — dedup automático
+        const toUpdateMap = new Map<string, any>() // chave: id   — dedup automático
+
+        for (const contact of normalizedContacts) {
             const existing = existingByPhone.get(contact.phone)
 
             if (existing) {
-                // Merge: atualiza dados e faz merge das tags
+                // Merge: combina tags e custom_fields, preserva dados existentes
                 const existingTags = Array.isArray(existing.tags) ? existing.tags : []
                 const newTags = Array.isArray(contact.tags) ? contact.tags : []
                 const mergedTags = [...new Set([...existingTags, ...newTags])]
 
-                // Merge custom_fields
-                const existingCustomFields = existing.custom_fields && typeof existing.custom_fields === 'object'
-                    ? existing.custom_fields
-                    : {}
-                const newCustomFields = (contact as any).custom_fields && typeof (contact as any).custom_fields === 'object'
-                    ? (contact as any).custom_fields
-                    : {}
-                const mergedCustomFields = { ...existingCustomFields, ...newCustomFields }
+                const existingCustomFields =
+                    existing.custom_fields && typeof existing.custom_fields === 'object' && !Array.isArray(existing.custom_fields)
+                        ? existing.custom_fields
+                        : {}
+                const newCustomFields =
+                    (contact as any).custom_fields && typeof (contact as any).custom_fields === 'object' && !Array.isArray((contact as any).custom_fields)
+                        ? (contact as any).custom_fields
+                        : {}
 
-                toUpdate.push({
+                toUpdateMap.set(existing.id, {
                     id: existing.id,
                     phone: contact.phone,
                     name: contact.name || existing.name || '',
                     email: (contact as any).email || existing.email || null,
                     tags: mergedTags,
-                    custom_fields: mergedCustomFields,
+                    custom_fields: { ...existingCustomFields, ...newCustomFields },
                     updated_at: now,
                 })
             } else {
-                // Novo contato
-                toInsert.push({
+                // Novo contato — se phone já está no Map, última linha do CSV prevalece
+                toInsertMap.set(contact.phone, {
                     id: generateId(),
                     name: contact.name || '',
                     phone: contact.phone,
                     email: (contact as any).email || null,
                     status: contact.status || ContactStatus.OPT_IN,
-                    tags: contact.tags || [],
+                    tags: [...new Set(contact.tags || [])], // deduplica tags
                     custom_fields: (contact as any).custom_fields || {},
                     created_at: now,
                 })
             }
-        })
-
-        // Inserir novos
-        if (toInsert.length > 0) {
-            const { error: insertError } = await supabase
-                .from('contacts')
-                .insert(toInsert)
-            if (insertError) throw insertError
         }
 
-        // Atualizar existentes
-        if (toUpdate.length > 0) {
-            const { error: updateError } = await supabase
-                .from('contacts')
-                .upsert(toUpdate, { onConflict: 'id' })
-            if (updateError) throw updateError
+        const deduplicatedInsert = Array.from(toInsertMap.values())
+        const deduplicatedUpdate = Array.from(toUpdateMap.values())
+
+        // Insere novos em lotes para não estourar payload do Supabase
+        let insertedCount = 0
+        for (const batch of chunk(deduplicatedInsert, BATCH_SIZE)) {
+            const { error } = await supabase.from('contacts').insert(batch)
+            if (error) throw error
+            insertedCount += batch.length
         }
 
-        return { inserted: toInsert.length, updated: toUpdate.length }
+        // Atualiza existentes em lotes
+        let updatedCount = 0
+        for (const batch of chunk(deduplicatedUpdate, BATCH_SIZE)) {
+            const { error } = await supabase
+                .from('contacts')
+                .upsert(batch, { onConflict: 'id' })
+            if (error) throw error
+            updatedCount += batch.length
+        }
+
+        return { inserted: insertedCount, updated: updatedCount }
     },
 
     getTags: async (): Promise<string[]> => {
