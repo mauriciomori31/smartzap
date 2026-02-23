@@ -148,8 +148,8 @@ export function QStashForm({ data, onComplete, onBack, showBack }: FormProps) {
               </a>
             </li>
             <li>
-              Selecione a região <strong className="text-[var(--br-hologram-white)]">US-East-1</strong>{' '}
-              <span className="text-[var(--br-dust-gray)]">(obrigatório — outras regiões causam erro 401)</span>
+              Selecione qualquer região{' '}
+              <span className="text-[var(--br-dust-gray)]">(US ou EU — ambas funcionam)</span>
             </li>
             <li>
               Clique em <strong className="text-[var(--br-hologram-white)]">QStash</strong> no menu lateral
